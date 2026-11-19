@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "title": "深读",
+    "description": "在对话旁阅读 PDF：书签目录、对话/终端上下分栏，以及选中文字搜索与提问。"
+  },
+  "panel": {
+    "label": "深读"
+  },
+  "toolbar": {
+    "open": "打开 PDF",
+    "replace": "替换",
+    "untitled": "尚未打开 PDF",
+    "page": "页码",
+    "of": "/",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "fit": "适合宽度",
+    "find": "在文档中查找",
+    "previous": "上一个匹配",
+    "next": "下一个匹配",
+    "matches": "{count} 处匹配",
+    "noMatches": "没有匹配",
+    "reading": "正在阅读"
+  },
+  "empty": {
+    "title": "读 PDF，也不离开对话",
+    "body": "PDF 占据左半边，当前会话就在右半边。看页面的同时可以直接提问，不用来回切换。",
+    "action": "选择 PDF",
+    "hint": "文字可选中；复制一段后会出现搜索和提问按钮。"
+  },
+  "loading": {
+    "uploading": "正在上传并解析“{name}”…",
+    "opening": "正在打开 PDF…",
+    "page": "正在加载页面…"
+  },
+  "error": {
+    "upload": "无法打开这个 PDF：{message}",
+    "page": "这一页渲染失败。",
+    "search": "搜索失败：{message}",
+    "web": "网页搜索失败：{message}",
+    "ask": "发送到对话失败：{message}",
+    "noSession": "请先打开一个会话，再对选中内容提问。",
+    "notPdf": "请选择 PDF 文件。"
+  },
+  "selection": {
+    "count": "已选中 {count} 字",
+    "copy": "复制",
+    "search": "搜索",
+    "ask": "问 AI",
+    "copied": "已复制",
+    "copyFailed": "复制失败",
+    "asked": "已发送到对话",
+    "close": "清除选择"
+  },
+  "web": {
+    "title": "网页搜索",
+    "placeholder": "搜索选中内容或短语",
+    "run": "搜索",
+    "loading": "正在搜索…",
+    "empty": "没有网页结果。",
+    "ask": "改为问 AI"
+  },
+  "chat": {
+    "title": "对话",
+    "live": "当前会话",
+    "none": "未选择会话",
+    "emptyTitle": "当前没有打开的会话",
+    "emptyBody": "打开一个会话，就能在同一视图里边读 PDF 边讨论。这里是真实会话，不是副本。",
+    "open": "打开对话",
+    "new": "新建会话",
+    "restore": "回来时 PDF 仍会保留。"
+  },
+  "doc": {
+    "pages": "{count} 页",
+    "selected": "选中文本",
+    "loading": "解析中"
+  },
+  "toast": {
+    "sent": "已发送到对话",
+    "copied": "已复制到剪贴板",
+    "opened": "PDF 已就绪"
+  }
+}

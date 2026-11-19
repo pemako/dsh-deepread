@@ -1,0 +1,83 @@
+{
+  "meta": {
+    "title": "DeepRead",
+    "description": "Read a PDF beside the live conversation, with a bookmark outline, a split chat/terminal pane, and selection search."
+  },
+  "panel": {
+    "label": "DeepRead"
+  },
+  "toolbar": {
+    "open": "Open PDF",
+    "replace": "Replace",
+    "untitled": "No PDF open",
+    "page": "Page",
+    "of": "of",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit width",
+    "find": "Find in document",
+    "previous": "Previous match",
+    "next": "Next match",
+    "matches": "{count} matches",
+    "noMatches": "No matches",
+    "reading": "Reading"
+  },
+  "empty": {
+    "title": "Read a PDF, keep the conversation",
+    "body": "Open a PDF and it stays on the left. The live session stays on the right, so you can ask about the page without leaving it.",
+    "action": "Choose a PDF",
+    "hint": "Text is selectable. Copying a passage offers search and ask."
+  },
+  "loading": {
+    "uploading": "Uploading and reading “{name}”…",
+    "opening": "Opening PDF…",
+    "page": "Loading page…"
+  },
+  "error": {
+    "upload": "Could not open this PDF: {message}",
+    "page": "This page could not be rendered.",
+    "search": "Search failed: {message}",
+    "web": "Web search failed: {message}",
+    "ask": "Could not send to the conversation: {message}",
+    "noSession": "Open a session first, then ask about the selection.",
+    "notPdf": "Choose a PDF file."
+  },
+  "selection": {
+    "count": "{count} characters selected",
+    "copy": "Copy",
+    "search": "Search",
+    "ask": "Ask AI",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "asked": "Sent to the conversation",
+    "close": "Clear selection"
+  },
+  "web": {
+    "title": "Web search",
+    "placeholder": "Search the selection or a phrase",
+    "run": "Search",
+    "loading": "Searching…",
+    "empty": "No web results.",
+    "ask": "Ask AI instead"
+  },
+  "chat": {
+    "title": "Conversation",
+    "live": "Live session",
+    "none": "No session",
+    "emptyTitle": "No conversation is open",
+    "emptyBody": "Open a session to read and discuss the PDF in the same view. The chat is the real session, not a copy.",
+    "open": "Open conversation",
+    "new": "New session",
+    "restore": "The PDF is still here when you come back."
+  },
+  "doc": {
+    "pages": "{count} pages",
+    "selected": "Selected text",
+    "loading": "Parsing"
+  },
+  "toast": {
+    "sent": "Sent to the conversation",
+    "copied": "Copied to the clipboard",
+    "opened": "PDF ready"
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: deepread
+      name: '@local/dsh-deepread'
