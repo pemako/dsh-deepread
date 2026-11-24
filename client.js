@@ -13,6 +13,28 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------------------
     const en = {
       'panel.label': 'DeepRead',
+      'source.label': 'Document source',
+      'source.pdf': 'PDF',
+      'source.web': 'Web page',
+      'page.address': 'Address of a page to study',
+      'page.go': 'Open',
+      'page.back': 'Back',
+      'page.forward': 'Forward',
+      'page.reload': 'Reload',
+      'page.external': 'Open in system browser',
+      'page.reader': 'Reader',
+      'page.original': 'Original site',
+      'page.readerHint': 'Reader mode proxies the page so it can be embedded and its selections read',
+      'page.originalHint': 'Original site mode loads the page unmodified; selections cannot be captured',
+      'page.loading': 'Loading',
+      'page.untitled': 'Untitled page',
+      'page.directNote': 'Original site mode cannot capture selections.',
+      'page.switchReader': 'Use Reader',
+      'page.emptyTitle': 'Read a web page beside the conversation',
+      'page.emptyBody': 'Enter an address above. The page stays on the left so you can select a passage and ask the live session about it.',
+      'page.emptyHint': 'Reader mode proxies the page so it can be embedded and its selections read.',
+      'error.address': 'That is not a valid http(s) address.',
+      'error.open': 'Could not open the system browser: {message}',
       'toolbar.open': 'Open PDF',
       'toolbar.replace': 'Replace',
       'toolbar.untitled': 'No PDF open',
@@ -99,6 +121,28 @@ window.__ModuleLoader__.load({
 
     const zh = {
       'panel.label': '深读',
+      'source.label': '文档来源',
+      'source.pdf': 'PDF',
+      'source.web': '网页',
+      'page.address': '要学习的网页地址',
+      'page.go': '打开',
+      'page.back': '后退',
+      'page.forward': '前进',
+      'page.reload': '刷新',
+      'page.external': '用系统浏览器打开',
+      'page.reader': '阅读模式',
+      'page.original': '原站模式',
+      'page.readerHint': '阅读模式经本地代理嵌入网页，才能读取选中内容',
+      'page.originalHint': '原站模式原样加载网页，无法获取选中内容',
+      'page.loading': '加载中',
+      'page.untitled': '无标题页面',
+      'page.directNote': '原站模式无法获取选中内容。',
+      'page.switchReader': '切回阅读模式',
+      'page.emptyTitle': '左边读网页，右边问会话',
+      'page.emptyBody': '在上方输入网址。网页留在左边，选中一段就能直接问当前会话。',
+      'page.emptyHint': '阅读模式经本地代理嵌入网页，所以才能划词提问。',
+      'error.address': '这不是有效的 http(s) 地址。',
+      'error.open': '打开系统浏览器失败：{message}',
       'toolbar.open': '打开 PDF',
       'toolbar.replace': '替换',
       'toolbar.untitled': '尚未打开 PDF',
@@ -189,6 +233,24 @@ window.__ModuleLoader__.load({
       return raw.replace(/\{(\w+)\}/g, (match, name) => (
         params[name] === undefined ? match : String(params[name])
       ))
+    }
+
+    /** A typed address becomes one canonical http(s) URL, or null when invalid. */
+    function normalizeAddress(input) {
+      const raw = String(input ?? '').trim()
+      if (raw === '') return ''
+      const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+      const local = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)(:\d+)?([/?#]|$)/i.test(raw)
+      const withScheme = hasScheme ? raw : `${local ? 'http' : 'https'}://${raw}`
+      let parsed
+      try {
+        parsed = new URL(withScheme)
+      } catch {
+        return null
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+      if (parsed.username !== '' || parsed.password !== '') return null
+      return parsed.href
     }
 
     function apiUrl(path) {
@@ -370,6 +432,28 @@ window.__ModuleLoader__.load({
       ])
     }
 
+    function GlobeIcon({ size = 15 }) {
+      return h(Icon, { size }, [
+        h('circle', { key: 'a', cx: 10, cy: 10, r: 6.6, stroke: 'currentColor', strokeWidth: 1.3 }),
+        h('path', { key: 'b', d: 'M3.6 10h12.8M10 3.4c1.8 1.9 2.7 4.1 2.7 6.6s-.9 4.7-2.7 6.6c-1.8-1.9-2.7-4.1-2.7-6.6s.9-4.7 2.7-6.6Z', stroke: 'currentColor', strokeWidth: 1.2, strokeLinejoin: 'round' }),
+      ])
+    }
+
+    function ExternalIcon({ size = 15 }) {
+      return h(Icon, { size }, [
+        h('path', { key: 'a', d: 'M12.2 3.6h4.2v4.2', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+        h('path', { key: 'b', d: 'M16.4 3.6 9.6 10.4', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round' }),
+        h('path', { key: 'c', d: 'M14.2 11.4v4.1H4.5V5.8h4.1', stroke: 'currentColor', strokeWidth: 1.35, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+      ])
+    }
+
+    function ReloadIcon({ size = 15 }) {
+      return h(Icon, { size }, [
+        h('path', { key: 'a', d: 'M15.4 10a5.4 5.4 0 1 1-1.9-4.1', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round' }),
+        h('path', { key: 'b', d: 'M15.8 3.6v3.1h-3.1', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+      ])
+    }
+
     function PanelIcon({ size = 20, active, ...rest }) {
       return h('svg', {
         width: size,
@@ -516,6 +600,12 @@ window.__ModuleLoader__.load({
 .dr-selection{position:absolute;left:12px;right:12px;bottom:12px;z-index:16;display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-overlay);box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .dr-selection-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .dr-selection-text b{font-weight:500;color:var(--dsw-alias-label-primary)}
+.dr-webview{position:relative;display:flex;flex:1 1 auto;min-width:0;min-height:0;flex-direction:column;background:var(--dsw-alias-bg-base)}
+.dr-webframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--dsw-alias-bg-base)}
+.dr-webview-loading{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:12px}
+.dr-webview-note{position:absolute;left:0;right:0;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--dsw-alias-bg-layer-2);border-bottom:1px solid var(--dsw-alias-border-l2);font-size:11.5px;color:var(--dsw-alias-label-primary)}
+.dr-webview-note span{flex:1 1 auto;min-width:0}
+.dr-source-switch{margin-right:2px}
 .dr-web-card{position:absolute;top:10px;right:10px;z-index:20;width:min(390px,calc(100% - 20px));max-height:calc(100% - 130px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-overlay);box-shadow:0 12px 34px rgba(0,0,0,.2)}
 .dr-web-head{display:flex;align-items:center;gap:6px;flex:none;padding:8px 9px;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .dr-web-head .dr-input{flex:1 1 auto}
@@ -1117,6 +1207,27 @@ window.__ModuleLoader__.load({
       const [search, setSearch] = React.useState(null)
       const [selection, setSelection] = React.useState(null)
       const [web, setWeb] = React.useState(null)
+      /**
+       * PDF and web page are two sources of one reading pane: the toolbar swaps
+       * its document controls, the left pane swaps its content, and the
+       * conversation, terminal and selection bar stay exactly where they are.
+       */
+      const [source, setSource] = React.useState(() => (
+        window.localStorage.getItem('dsh.deepread.source') === 'web' ? 'web' : 'pdf'
+      ))
+      const [webNav, setWebNav] = React.useState(() => {
+        const stored = window.localStorage.getItem('dsh.deepread.weburl')
+        const valid = typeof stored === 'string' ? normalizeAddress(stored) : null
+        return valid === null || stored === '' ? { entries: [], index: 0 } : { entries: [stored], index: 0 }
+      })
+      const [webAddress, setWebAddress] = React.useState('')
+      const [webMode, setWebMode] = React.useState(() => (
+        window.localStorage.getItem('dsh.deepread.webmode') === 'direct' ? 'direct' : 'read'
+      ))
+      const [webTitle, setWebTitle] = React.useState('')
+      const [webLoading, setWebLoading] = React.useState(false)
+      const [webNonce, setWebNonce] = React.useState(0)
+      const webUrl = webNav.entries[webNav.index] ?? ''
       const [toast, setToast] = React.useState(null)
       const [asking, setAsking] = React.useState(false)
       const [outline, setOutline] = React.useState({ state: 'idle', rows: [], error: '' })
@@ -1142,10 +1253,12 @@ window.__ModuleLoader__.load({
       const [readerOnly, setReaderOnly] = React.useState(() => window.localStorage.getItem('dsh.deepread.readeronly') === '1')
       // With nothing open there is no reading area to widen, so the preference
       // only applies with a document and the toggle is not offered without one.
-      const collapsed = readerOnly && doc !== null
+      const hasContent = doc !== null || (source === 'web' && webUrl !== '')
+      const collapsed = readerOnly && hasContent
 
       const rootRef = React.useRef(null)
       const viewerRef = React.useRef(null)
+      const webFrameRef = React.useRef(null)
       const fileRef = React.useRef(null)
       const pageInputRef = React.useRef(null)
       const sideRef = React.useRef(null)
@@ -1377,6 +1490,65 @@ window.__ModuleLoader__.load({
         }, 380)
         return () => window.clearTimeout(id)
       }, [searchQuery, doc])
+
+      React.useEffect(() => {
+        window.localStorage.setItem('dsh.deepread.source', source)
+      }, [source])
+
+      React.useEffect(() => {
+        window.localStorage.setItem('dsh.deepread.webmode', webMode)
+      }, [webMode])
+
+      React.useEffect(() => {
+        setWebAddress(webUrl)
+        if (webUrl !== '') {
+          try {
+            window.localStorage.setItem('dsh.deepread.weburl', webUrl)
+          } catch {
+            // Storage is optional; the in-memory value still works.
+          }
+        }
+      }, [webUrl])
+
+      /**
+       * The bridge in the proxied frame is the only channel out of the page.
+       * It reports the selection, link activations, form searches and the
+       * title; the reader turns a reported selection into the same selection
+       * state the PDF word layer produces, so the bottom bar and Ask work
+       * unchanged.
+       */
+      React.useEffect(() => {
+        function onMessage(event) {
+          const frame = webFrameRef.current
+          if (frame === null || event.source !== frame.contentWindow) return
+          const data = event.data
+          if (data === null || typeof data !== 'object' || data.__dshDeepread !== 1) return
+          if (data.kind === 'selection') {
+            const text = typeof data.text === 'string' ? data.text : ''
+            if (source !== 'web' || text === '') {
+              setSelection(null)
+              return
+            }
+            setSelection({
+              text: text.slice(0, 12_000),
+              source: 'web',
+              url: webUrl,
+              title: webTitle,
+            })
+          } else if (data.kind === 'navigate' && typeof data.url === 'string') {
+            navigateWeb(data.url)
+          } else if (data.kind === 'external' && typeof data.url === 'string') {
+            void openWebExternal(data.url)
+          } else if (data.kind === 'ready') {
+            setWebTitle(typeof data.title === 'string' ? data.title : '')
+            setWebLoading(false)
+          } else if (data.kind === 'escape') {
+            setSelection(null)
+          }
+        }
+        window.addEventListener('message', onMessage)
+        return () => window.removeEventListener('message', onMessage)
+      }, [source, webUrl, webTitle])
 
       const errors = React.useMemo(() => {
         const list = []
@@ -1741,6 +1913,68 @@ window.__ModuleLoader__.load({
         runWebSearch(selection.text.slice(0, 300))
       }
 
+      function pushWebUrl(url) {
+        setWebNav((prev) => {
+          const entries = prev.entries.slice(0, prev.index + 1)
+          if (entries[entries.length - 1] === url) return { entries, index: entries.length - 1 }
+          entries.push(url)
+          const trimmed = entries.slice(-40)
+          return { entries: trimmed, index: trimmed.length - 1 }
+        })
+        setWebTitle('')
+        setSelection(null)
+        setWebLoading(true)
+      }
+
+      function goWeb(input) {
+        const address = normalizeAddress(input)
+        if (address === null) {
+          showError(tx('error.address'))
+          return
+        }
+        if (address === '') {
+          setWebNav({ entries: [], index: 0 })
+          setWebTitle('')
+          setSelection(null)
+          return
+        }
+        pushWebUrl(address)
+      }
+
+      /** A link in the proxied page navigates the reader, never the frame. */
+      function navigateWeb(url) {
+        const address = normalizeAddress(url)
+        if (address === null || address === '') return
+        pushWebUrl(address)
+      }
+
+      function webBack() {
+        setSelection(null)
+        setWebLoading(true)
+        setWebNav((prev) => (prev.index > 0 ? { ...prev, index: prev.index - 1 } : prev))
+      }
+
+      function webForward() {
+        setSelection(null)
+        setWebLoading(true)
+        setWebNav((prev) => (prev.index < prev.entries.length - 1 ? { ...prev, index: prev.index + 1 } : prev))
+      }
+
+      function reloadWeb() {
+        if (webUrl === '') return
+        setWebLoading(true)
+        setWebNonce((value) => value + 1)
+      }
+
+      async function openWebExternal(url) {
+        if (typeof url !== 'string' || url === '') return
+        try {
+          await postJson('/open-page', { url })
+        } catch (error) {
+          showError(tx('error.open', { message: error instanceof Error ? error.message : String(error) }))
+        }
+      }
+
       async function askSelection(text, question) {
         const value = (text ?? selection?.text ?? '').trim().slice(0, 12_000)
         if (value === '') return
@@ -1755,7 +1989,13 @@ window.__ModuleLoader__.load({
         if (sideMode === 'terminal') setSideMode('chat')
         setAsking(true)
         try {
-          await postJson('/ask', { sessionId, text: value, question: question ?? '' })
+          const payload = { sessionId, text: value, question: question ?? '' }
+          if (selection !== null && selection.source === 'web') {
+            payload.source = 'web'
+            payload.url = selection.url
+            payload.title = selection.title
+          }
+          await postJson('/ask', payload)
           notify(tx('selection.asked'))
           setWeb(null)
         } catch (error) {
@@ -1777,7 +2017,30 @@ window.__ModuleLoader__.load({
         h(StyleTag, { key: 'style' }),
         h('div', { key: 'topbar', className: 'dr-topbar' }, [
           h('div', { key: 'brand', className: 'dr-brand' }, [h(BookIcon, { key: 'i', size: 16 }), tx('panel.label')]),
-          h('button', {
+          h('div', {
+            key: 'source',
+            className: 'dr-mode-switch dr-source-switch',
+            role: 'group',
+            'aria-label': tx('source.label'),
+          }, [
+            h('button', {
+              key: 'pdf',
+              type: 'button',
+              className: 'dr-mode-btn',
+              'data-on': source === 'pdf' ? '1' : '0',
+              'aria-pressed': source === 'pdf',
+              onClick: () => setSource('pdf'),
+            }, tx('source.pdf')),
+            h('button', {
+              key: 'web',
+              type: 'button',
+              className: 'dr-mode-btn',
+              'data-on': source === 'web' ? '1' : '0',
+              'aria-pressed': source === 'web',
+              onClick: () => setSource('web'),
+            }, tx('source.web')),
+          ]),
+          source === 'pdf' && h('button', {
             key: 'open',
             type: 'button',
             className: 'dr-btn dr-primary',
@@ -1795,14 +2058,106 @@ window.__ModuleLoader__.load({
               if (file) openFile(file)
             },
           }),
-          h('span', {
+          source === 'pdf' && h('span', {
             key: 'name',
             className: 'dr-doc-name',
             title: doc === null ? tx('toolbar.untitled') : doc.name,
           }, doc === null ? tx('toolbar.untitled') : doc.name),
-          doc !== null && h('span', { key: 'pages', className: 'dr-doc-meta' }, tx('doc.pages', { count: doc.pages })),
+          source === 'pdf' && doc !== null && h('span', { key: 'pages', className: 'dr-doc-meta' }, tx('doc.pages', { count: doc.pages })),
+          source === 'web' && h('form', {
+            key: 'address',
+            style: { display: 'contents' },
+            onSubmit: (event) => {
+              event.preventDefault()
+              goWeb(webAddress)
+            },
+          }, [
+            h('input', {
+              key: 'input',
+              className: 'dr-input',
+              style: { flex: '1 1 200px', minWidth: 140 },
+              type: 'text',
+              inputMode: 'url',
+              autoComplete: 'off',
+              spellCheck: false,
+              placeholder: tx('page.address'),
+              'aria-label': tx('page.address'),
+              value: webAddress,
+              onChange: (event) => setWebAddress(event.target.value),
+            }),
+            h('button', {
+              key: 'go',
+              type: 'submit',
+              className: 'dr-btn dr-icon',
+              title: tx('page.go'),
+              'aria-label': tx('page.go'),
+            }, h(GlobeIcon, {})),
+          ]),
           h('span', { key: 'space', className: 'dr-spacer' }),
-          doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
+          source === 'web' && h('div', { key: 'webnav', className: 'dr-group' }, [
+            h('button', {
+              key: 'back',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('page.back'),
+              'aria-label': tx('page.back'),
+              disabled: webNav.index <= 0,
+              onClick: webBack,
+            }, h(ChevronIcon, { direction: 'left' })),
+            h('button', {
+              key: 'forward',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('page.forward'),
+              'aria-label': tx('page.forward'),
+              disabled: webNav.index >= webNav.entries.length - 1,
+              onClick: webForward,
+            }, h(ChevronIcon, { direction: 'right' })),
+            h('button', {
+              key: 'reload',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('page.reload'),
+              'aria-label': tx('page.reload'),
+              disabled: webUrl === '',
+              onClick: reloadWeb,
+            }, h(ReloadIcon, {})),
+            h('div', {
+              key: 'mode',
+              className: 'dr-mode-switch',
+              role: 'group',
+              'aria-label': tx('source.label'),
+            }, [
+              h('button', {
+                key: 'read',
+                type: 'button',
+                className: 'dr-mode-btn',
+                'data-on': webMode === 'read' ? '1' : '0',
+                'aria-pressed': webMode === 'read',
+                title: tx('page.readerHint'),
+                onClick: () => setWebMode('read'),
+              }, tx('page.reader')),
+              h('button', {
+                key: 'direct',
+                type: 'button',
+                className: 'dr-mode-btn',
+                'data-on': webMode === 'direct' ? '1' : '0',
+                'aria-pressed': webMode === 'direct',
+                title: tx('page.originalHint'),
+                onClick: () => setWebMode('direct'),
+              }, tx('page.original')),
+            ]),
+            h('button', {
+              key: 'external',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('page.external'),
+              'aria-label': tx('page.external'),
+              disabled: webUrl === '',
+              onClick: () => { void openWebExternal(webUrl) },
+            }, h(ExternalIcon, {})),
+          ]),
+          source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
             h('input', {
               key: 'page',
               ref: pageInputRef,
@@ -1818,7 +2173,7 @@ window.__ModuleLoader__.load({
             }),
             h('span', { key: 'of', className: 'dr-match-count' }, `${tx('toolbar.of')} ${doc.pages}`),
           ]),
-          doc !== null && h('div', { key: 'zoom', className: 'dr-group' }, [
+          source === 'pdf' && doc !== null && h('div', { key: 'zoom', className: 'dr-group' }, [
             h('button', {
               key: 'out',
               type: 'button',
@@ -1844,7 +2199,7 @@ window.__ModuleLoader__.load({
               onClick: () => setZoom((value) => Math.min(2.4, Math.round((value + 0.1) * 10) / 10)),
             }, h(PlusIcon, {})),
           ]),
-          doc !== null && h('div', { key: 'search', className: 'dr-group' }, [
+          source === 'pdf' && doc !== null && h('div', { key: 'search', className: 'dr-group' }, [
             h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
               h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
               h('input', {
@@ -1883,7 +2238,7 @@ window.__ModuleLoader__.load({
               onClick: () => cycleMatch(1),
             }, h(ChevronIcon, { direction: 'down' })),
           ]),
-          doc !== null && h('button', {
+          source === 'pdf' && doc !== null && h('button', {
             key: 'toc',
             type: 'button',
             className: 'dr-btn',
@@ -1908,7 +2263,7 @@ window.__ModuleLoader__.load({
             'aria-label': tx('chat.open'),
             onClick: () => selectConversation(),
           }, h(PageIcon, {})),
-          doc !== null && h('button', {
+          hasContent && h('button', {
             key: 'reader',
             type: 'button',
             className: 'dr-btn',
@@ -1920,41 +2275,80 @@ window.__ModuleLoader__.load({
             collapsed ? tx('side.expand') : tx('side.collapse'),
           ]),
         ]),
+
         errors.length > 0 && h('div', { key: 'errors', className: 'dr-error-line' }, errors.join(' · ')),
         h('div', { key: 'split', className: `dr-split${collapsed ? ' dr-reader-only' : ''}` }, [
           h('section', {
-            key: 'pdf',
+            key: 'pane',
             className: 'dr-pdf-pane',
             style: collapsed ? { flex: '1 1 auto' } : { flex: `0 0 ${split}%` },
           }, [
-            h('div', {
-              key: 'viewer',
-              ref: viewerRef,
-              className: 'dr-viewer',
-              onMouseUp: captureSelection,
-              onKeyUp: captureSelection,
-              onScroll: schedulePositionSave,
-            }, doc === null
-              ? h('div', { className: 'dr-empty' }, [
-                h(BookIcon, { key: 'i', size: 38 }),
-                h('h3', { key: 't' }, tx('empty.title')),
-                h('p', { key: 'b' }, tx('empty.body')),
-                h('button', {
-                  key: 'a',
-                  type: 'button',
-                  className: 'dr-btn dr-primary',
-                  onClick: () => fileRef.current?.click(),
-                  disabled: Boolean(busy),
-                }, [h(OpenIcon, { key: 'i' }), tx('empty.action')]),
-                h('small', { key: 'h' }, tx('empty.hint')),
-              ])
-              : (Array.isArray(doc.texts) ? doc.texts : []).map((page, index) => h(PageView, {
-                key: `${doc.id}-${index + 1}`,
-                docId: doc.id,
-                pageNumber: index + 1,
-                page,
-                highlight: search?.query ?? '',
-              }))),
+            source === 'web'
+              ? h('div', { key: 'webview', className: 'dr-webview' },
+                webUrl === ''
+                  ? h('div', { className: 'dr-empty' }, [
+                    h(GlobeIcon, { key: 'i', size: 38 }),
+                    h('h3', { key: 't' }, tx('page.emptyTitle')),
+                    h('p', { key: 'b' }, tx('page.emptyBody')),
+                    h('small', { key: 'h' }, tx('page.emptyHint')),
+                  ])
+                  : h(React.Fragment, null, [
+                    h('iframe', {
+                      key: `webframe-${webNonce}-${webMode}`,
+                      ref: webFrameRef,
+                      className: 'dr-webframe',
+                      src: webMode === 'read'
+                        ? `${apiUrl('/page')}?url=${encodeURIComponent(webUrl)}&n=${webNonce}`
+                        : webUrl,
+                      title: webTitle === '' ? tx('page.untitled') : webTitle,
+                      sandbox: webMode === 'read'
+                        ? 'allow-scripts allow-forms'
+                        : 'allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox',
+                      referrerPolicy: 'no-referrer',
+                      onLoad: () => setWebLoading(false),
+                    }),
+                    webMode === 'direct' && h('div', { key: 'note', className: 'dr-webview-note' }, [
+                      h('span', { key: 'text' }, tx('page.directNote')),
+                      h('button', {
+                        key: 'switch',
+                        type: 'button',
+                        className: 'dr-btn dr-primary',
+                        onClick: () => setWebMode('read'),
+                      }, tx('page.switchReader')),
+                    ]),
+                    webLoading && h('div', { key: 'loading', className: 'dr-webview-loading' }, [
+                      h('span', { key: 's', className: 'dr-spinner' }),
+                      tx('page.loading'),
+                    ]),
+                  ]))
+              : h('div', {
+                key: 'viewer',
+                ref: viewerRef,
+                className: 'dr-viewer',
+                onMouseUp: captureSelection,
+                onKeyUp: captureSelection,
+                onScroll: schedulePositionSave,
+              }, doc === null
+                ? h('div', { className: 'dr-empty' }, [
+                  h(BookIcon, { key: 'i', size: 38 }),
+                  h('h3', { key: 't' }, tx('empty.title')),
+                  h('p', { key: 'b' }, tx('empty.body')),
+                  h('button', {
+                    key: 'a',
+                    type: 'button',
+                    className: 'dr-btn dr-primary',
+                    onClick: () => fileRef.current?.click(),
+                    disabled: Boolean(busy),
+                  }, [h(OpenIcon, { key: 'i' }), tx('empty.action')]),
+                  h('small', { key: 'h' }, tx('empty.hint')),
+                ])
+                : (Array.isArray(doc.texts) ? doc.texts : []).map((page, index) => h(PageView, {
+                  key: `${doc.id}-${index + 1}`,
+                  docId: doc.id,
+                  pageNumber: index + 1,
+                  page,
+                  highlight: search?.query ?? '',
+                }))),
             busy !== '' && h('div', {
               key: 'busy',
               style: doc === null
@@ -2070,7 +2464,7 @@ window.__ModuleLoader__.load({
                 onClick: () => setSelection(null),
               }, h(CloseIcon, {})),
             ]),
-            tocOpen && doc !== null && h('div', {
+            tocOpen && source === 'pdf' && doc !== null && h('div', {
               key: 'toc',
               className: 'dr-toc',
               onKeyDown: (event) => {

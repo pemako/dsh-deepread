@@ -1,17 +1,21 @@
 # 深读 / DeepRead
 
-一个带左侧栏入口的 DSH Web 插件：左边读 PDF，右边是当前会话本身。
+一个带左侧栏入口的 DSH Web 插件：左边读 PDF **或网页**，右边是当前会话本身。
+工具栏顶部的「PDF / 网页」开关切换左侧读什么，右侧的对话、终端和底部选区栏都不变。
 
 ## 使用
 
 1. 点左侧栏的「深读」图标（在 Plugins / Schedules 之后）。
-2. 点「打开 PDF」选择本地文件。文件会上传到 Host，用本机 Poppler
+2. 来源为 **PDF** 时，点「打开 PDF」选择本地文件。文件会上传到 Host，用本机 Poppler
    （`pdfinfo`、`pdftotext`、`pdftoppm`）转成页面图片和带坐标的文字层。
+   来源为 **网页** 时，直接在地址栏输入网址（裸域名按 https，`localhost:3000` 这类按 http），
+   地址栏旁的 ← →、刷新和「用系统浏览器打开」都作用于当前网页。
 3. 拖动中间的分隔条调整左右比例；窄窗口会自动上下堆叠。
-4. 选中 PDF 文字后，底部出现选段栏：
+4. 选中 PDF 文字或网页文字后，底部出现同一个选段栏：
    - **复制**：按文字层重建纯文本（中文不会在字间插空格）。
    - **搜索**：在 PDF 页内打开网页搜索卡片；复制文字时卡片也会自动打开并填入内容。
-   - **问 AI**：把选段作为普通用户消息发到右侧的真实会话，由当前 Agent 回答。
+   - **问 AI**：把选段（网页模式还会带上页面标题和地址）作为普通用户消息发到右侧的真实会话，
+     由当前 Agent 回答。
 5. 工具栏支持页码跳转、缩放、文档内查找（上一个/下一个匹配）。
 6. 工具栏的 **目录** 按钮打开书签目录树：支持展开/收起、筛选，点击章节跳到对应页；
    当前页会高亮。目录从 PDF 书签读取。
@@ -29,13 +33,28 @@
     或关闭再打开都会回到上次位置。位置同时写入 Host（`positions.json`）和浏览器
     localStorage，Host 版本用于跨重启，localStorage 用于面板切换时的即时兜底。
 
+## 网页模式
+
+- **阅读模式**（默认）：一次顶层导航经由 Host 路由 `/dsh-deepread/api/page` 代理——
+  去掉原站的 `X-Frame-Options` / CSP，注入 `<base>` 让原站 CSS、图片和脚本仍从原站加载，
+  再注入选区桥 `/dsh-deepread/api/bridge.js`。代理文档自带 `Content-Security-Policy: sandbox`，
+  即使被单独打开也拿不到应用源。面板只接收桥上报的选中文字、链接、GET 表单搜索和标题。
+  划词后沿用同一个底部选区栏，复制/搜索/问 AI 都可用。
+- **原站模式**：网页原样装在 sandbox iframe 里，兼容依赖自身源的页面；没有选区桥，
+  因此不能划词提问（面板里有提示和「切回阅读模式」）。
+- 页面里的链接和 GET 搜索表单都回传给面板，由面板重新代理，不会让 iframe 直接跑到外站；
+  POST 表单和 Cmd/Ctrl+点击交给系统浏览器。单页上限 12 MB。
+- 网页地址、来源和阅读/原站模式都会记住；PDF 文档和阅读位置仍各自保留。
+
 ## 结构
 
 - `index.js` — Host 半部：PDF 上传/存储、Poppler 解析、页面图片缓存、文档搜索、
-  `ctx.web.search` 代理、PDFKit 书签读取（`osascript` + `text/outline.jxa`），以及把选段
-  投递到 `ctx.agents.get(sessionId).followup()`。
+  `ctx.web.search` 代理、PDFKit 书签读取（`osascript` + `text/outline.jxa`）、
+  网页代理与选区桥、系统浏览器打开，以及把 PDF 或网页选段投递到
+  `ctx.agents.get(sessionId).followup()`。
 - `client.js` — 浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖拽左右/上下分栏、
-  PDF 图片 + 文字层、目录树、复制/搜索/提问交互、右栏整块收起（`dsh.deepread.readeronly`），
+  PDF 图片 + 文字层、目录树、复制/搜索/提问交互、PDF/网页来源开关、网页工具栏与桥消息处理、
+  右栏整块收起（`dsh.deepread.readeronly`），
   以及通过 `conversation.content` Factory 渲染的真实会话。终端加载内置终端包的
   `TerminalBody` / xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，
   contentId 由 `dsh.deepread.termgen.<sessionId>` 的 generation 决定，插件不再调用
@@ -52,6 +71,8 @@
 - 加密/需要密码的 PDF 不支持。
 - 扫描版 PDF 没有文字层：页面可以看，但选中、复制、文档内搜索不可用。
 - 网页搜索走 DSH 已配置的 `ctx.web` provider；未配置时搜索卡片会显示错误。
+- 网页阅读模式不带站点 Cookie，需要登录的页面会显示未登录；重 JS 站点可能降级；
+  弹窗被禁用；绕过选区桥的跳转（`location.assign`、`meta refresh`）会让选区失效，刷新即可恢复。
 - 终端是面板内的 Web 终端（xterm），不是 iTerm2 本体，也没有 iTerm 的独立窗口/分屏；深读不再打开外部 iTerm。
 - 终端只属于深读面板，不出现在会话右侧栏；要在侧栏里跑命令，请用会话右上角的「新建终端」。
 - 面板关闭期间终端没有窗口持有（window hold）：进程会在完全空闲达到终端的无人值守回收时间（默认 2 小时）

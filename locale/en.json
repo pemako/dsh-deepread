@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "DeepRead",
-    "description": "Read a PDF beside the live conversation, with a bookmark outline, a split chat/terminal pane, and selection search."
+    "description": "Read a PDF or a web page beside the live conversation, with a bookmark outline, a split chat/terminal pane, and selection search. Reader mode proxies web pages so selections can be asked about; the original site stays one click away."
   },
   "panel": {
     "label": "DeepRead"
