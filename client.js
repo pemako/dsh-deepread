@@ -30,6 +30,9 @@ window.__ModuleLoader__.load({
       'page.untitled': 'Untitled page',
       'page.directNote': 'Original site mode cannot capture selections.',
       'page.switchReader': 'Use Reader',
+      'page.zoomOut': 'Zoom out the page',
+      'page.zoomIn': 'Zoom in the page',
+      'page.zoomReset': 'Reset to 100% (Ctrl or Cmd + wheel also zooms in Reader mode)',
       'page.emptyTitle': 'Read a web page beside the conversation',
       'page.emptyBody': 'Enter an address above. The page stays on the left so you can select a passage and ask the live session about it.',
       'page.emptyHint': 'Reader mode proxies the page so it can be embedded and its selections read.',
@@ -138,6 +141,9 @@ window.__ModuleLoader__.load({
       'page.untitled': '无标题页面',
       'page.directNote': '原站模式无法获取选中内容。',
       'page.switchReader': '切回阅读模式',
+      'page.zoomOut': '缩小网页',
+      'page.zoomIn': '放大网页',
+      'page.zoomReset': '恢复 100%（阅读模式下 ⌘/Ctrl + 滚轮也可缩放）',
       'page.emptyTitle': '左边读网页，右边问会话',
       'page.emptyBody': '在上方输入网址。网页留在左边，选中一段就能直接问当前会话。',
       'page.emptyHint': '阅读模式经本地代理嵌入网页，所以才能划词提问。',
@@ -601,7 +607,8 @@ window.__ModuleLoader__.load({
 .dr-selection-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .dr-selection-text b{font-weight:500;color:var(--dsw-alias-label-primary)}
 .dr-webview{position:relative;display:flex;flex:1 1 auto;min-width:0;min-height:0;flex-direction:column;background:var(--dsw-alias-bg-base)}
-.dr-webframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--dsw-alias-bg-base)}
+.dr-zoom-wrap{position:absolute;inset:0;overflow:hidden;background:var(--dsw-alias-bg-base)}
+.dr-webframe{position:absolute;top:0;left:0;border:0;transform-origin:0 0;background:var(--dsw-alias-bg-base)}
 .dr-webview-loading{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:12px}
 .dr-webview-note{position:absolute;left:0;right:0;top:0;z-index:5;display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--dsw-alias-bg-layer-2);border-bottom:1px solid var(--dsw-alias-border-l2);font-size:11.5px;color:var(--dsw-alias-label-primary)}
 .dr-webview-note span{flex:1 1 auto;min-width:0}
@@ -1227,6 +1234,16 @@ window.__ModuleLoader__.load({
       const [webTitle, setWebTitle] = React.useState('')
       const [webLoading, setWebLoading] = React.useState(false)
       const [webNonce, setWebNonce] = React.useState(0)
+      /**
+       * Page zoom, like a browser's: the frame lays out at `viewport / zoom`
+       * CSS pixels and is scaled back up, so text reflows instead of turning
+       * into a magnified bitmap. 0.5–2 in steps of 0.1.
+       */
+      const [webZoom, setWebZoom] = React.useState(() => {
+        const stored = Number(window.localStorage.getItem('dsh.deepread.webzoom'))
+        return Number.isFinite(stored) && stored >= 0.5 && stored <= 2 ? Math.round(stored * 10) / 10 : 1
+      })
+      const [webViewport, setWebViewport] = React.useState({ width: 0, height: 0 })
       const webUrl = webNav.entries[webNav.index] ?? ''
       const [toast, setToast] = React.useState(null)
       const [asking, setAsking] = React.useState(false)
@@ -1259,6 +1276,7 @@ window.__ModuleLoader__.load({
       const rootRef = React.useRef(null)
       const viewerRef = React.useRef(null)
       const webFrameRef = React.useRef(null)
+      const webZoomWrapRef = React.useRef(null)
       const fileRef = React.useRef(null)
       const pageInputRef = React.useRef(null)
       const sideRef = React.useRef(null)
@@ -1500,6 +1518,28 @@ window.__ModuleLoader__.load({
       }, [webMode])
 
       React.useEffect(() => {
+        window.localStorage.setItem('dsh.deepread.webzoom', String(webZoom))
+      }, [webZoom])
+
+      /** The frame's layout box follows the pane, so zoom needs the pane size. */
+      React.useEffect(() => {
+        if (source !== 'web' || webUrl === '') return undefined
+        const node = webZoomWrapRef.current
+        if (node === null || typeof ResizeObserver === 'undefined') return undefined
+        const measure = () => {
+          setWebViewport((prev) => {
+            const width = node.clientWidth
+            const height = node.clientHeight
+            return prev.width === width && prev.height === height ? prev : { width, height }
+          })
+        }
+        measure()
+        const observer = new ResizeObserver(measure)
+        observer.observe(node)
+        return () => observer.disconnect()
+      }, [source, webUrl])
+
+      React.useEffect(() => {
         setWebAddress(webUrl)
         if (webUrl !== '') {
           try {
@@ -1539,6 +1579,9 @@ window.__ModuleLoader__.load({
             navigateWeb(data.url)
           } else if (data.kind === 'external' && typeof data.url === 'string') {
             void openWebExternal(data.url)
+          } else if (data.kind === 'zoom') {
+            const direction = data.direction === 1 ? 1 : -1
+            setWebZoom((value) => Math.max(0.5, Math.min(2, Math.round((value + direction * 0.1) * 10) / 10)))
           } else if (data.kind === 'ready') {
             setWebTitle(typeof data.title === 'string' ? data.title : '')
             setWebLoading(false)
@@ -2005,6 +2048,14 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const webFrameStyle = webViewport.width > 0 && webViewport.height > 0
+        ? {
+          width: `${Math.ceil(webViewport.width / webZoom)}px`,
+          height: `${Math.ceil(webViewport.height / webZoom)}px`,
+          transform: `scale(${webZoom})`,
+        }
+        : { width: '100%', height: '100%' }
+
       const selectedText = selection?.text ?? ''
       const hasSession = typeof sessionId === 'string' && sessionId !== ''
       const sessionCwd = hasSession ? sessionsById?.[sessionId]?.cwd : undefined
@@ -2157,6 +2208,32 @@ window.__ModuleLoader__.load({
               onClick: () => { void openWebExternal(webUrl) },
             }, h(ExternalIcon, {})),
           ]),
+          source === 'web' && h('div', { key: 'webzoom', className: 'dr-group' }, [
+            h('button', {
+              key: 'out',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('page.zoomOut'),
+              'aria-label': tx('page.zoomOut'),
+              onClick: () => setWebZoom((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10)),
+            }, h(MinusIcon, {})),
+            h('button', {
+              key: 'pct',
+              type: 'button',
+              className: 'dr-btn',
+              title: tx('page.zoomReset'),
+              onClick: () => setWebZoom(1),
+              style: { minWidth: 48, fontVariantNumeric: 'tabular-nums' },
+            }, `${Math.round(webZoom * 100)}%`),
+            h('button', {
+              key: 'in',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('page.zoomIn'),
+              'aria-label': tx('page.zoomIn'),
+              onClick: () => setWebZoom((value) => Math.min(2, Math.round((value + 0.1) * 10) / 10)),
+            }, h(PlusIcon, {})),
+          ]),
           source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
             h('input', {
               key: 'page',
@@ -2293,20 +2370,22 @@ window.__ModuleLoader__.load({
                     h('small', { key: 'h' }, tx('page.emptyHint')),
                   ])
                   : h(React.Fragment, null, [
-                    h('iframe', {
-                      key: `webframe-${webNonce}-${webMode}`,
-                      ref: webFrameRef,
-                      className: 'dr-webframe',
-                      src: webMode === 'read'
-                        ? `${apiUrl('/page')}?url=${encodeURIComponent(webUrl)}&n=${webNonce}`
-                        : webUrl,
-                      title: webTitle === '' ? tx('page.untitled') : webTitle,
-                      sandbox: webMode === 'read'
-                        ? 'allow-scripts allow-forms'
-                        : 'allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox',
-                      referrerPolicy: 'no-referrer',
-                      onLoad: () => setWebLoading(false),
-                    }),
+                    h('div', { key: 'zoomwrap', ref: webZoomWrapRef, className: 'dr-zoom-wrap' },
+                      h('iframe', {
+                        key: `webframe-${webNonce}-${webMode}`,
+                        ref: webFrameRef,
+                        className: 'dr-webframe',
+                        style: webFrameStyle,
+                        src: webMode === 'read'
+                          ? `${apiUrl('/page')}?url=${encodeURIComponent(webUrl)}&n=${webNonce}`
+                          : webUrl,
+                        title: webTitle === '' ? tx('page.untitled') : webTitle,
+                        sandbox: webMode === 'read'
+                          ? 'allow-scripts allow-forms'
+                          : 'allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox',
+                        referrerPolicy: 'no-referrer',
+                        onLoad: () => setWebLoading(false),
+                      })),
                     webMode === 'direct' && h('div', { key: 'note', className: 'dr-webview-note' }, [
                       h('span', { key: 'text' }, tx('page.directNote')),
                       h('button', {

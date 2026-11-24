@@ -519,6 +519,13 @@ const BRIDGE = String.raw`(() => {
       post({ kind: 'selection', text: lastText, rect, viewport: viewport() });
     }, 120);
   }, { passive: true });
+  // Browsers reserve Ctrl/Cmd + wheel for zoom; report it so the reader zooms
+  // the page its own way instead of zooming the whole application.
+  document.addEventListener('wheel', (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    post({ kind: 'zoom', direction: event.deltaY < 0 ? 1 : -1 });
+  }, { passive: false });
 })()`
 
 async function readCapped(response) {
