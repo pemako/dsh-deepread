@@ -54,6 +54,9 @@ jobs:
           node --check index.js
           node --check client.js
 
+      - name: Run the unit tests
+        run: npm test
+
       - name: Show what would be published
         run: npm pack --dry-run
 

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { parseBbox, rewriteHtml, normalizeTarget, plainLine, isBlockedIp, clampDpi } from '../index.js'
+import { parseBbox, rewriteHtml, normalizeTarget, plainLine, isBlockedIp, clampDpi, createLimiter } from '../index.js'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
@@ -113,4 +113,18 @@ test('the manifest, locales and detail documents agree', async () => {
     assert.match(doc.trim(), /^!\[[^\]]+\]\(preview\.svg\)$/, `${detail} is one image line`)
     assert.ok(existsSync(join(root, 'docs', 'preview.svg')), 'preview.svg exists')
   }
+})
+
+test('createLimiter never runs more than its limit', async () => {
+  const run = createLimiter(2)
+  let active = 0
+  let peak = 0
+  await Promise.all(Array.from({ length: 8 }, () => run(async () => {
+    active += 1
+    peak = Math.max(peak, active)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    active -= 1
+  })))
+  assert.equal(peak, 2)
+  assert.equal(active, 0)
 })

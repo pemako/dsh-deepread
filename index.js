@@ -44,6 +44,7 @@ const MAX_RENDER_DPI = 300
 const MAX_REDIRECTS = 5
 const MAX_PAGE_BYTES = 12 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 25_000
+const RENDER_CONCURRENCY = 3
 
 /** The proxied document's own sandbox, combined with the iframe's attribute. */
 const PAGE_POLICY = "sandbox allow-scripts allow-forms; default-src 'none'; img-src * data: blob:; "
@@ -148,6 +149,28 @@ async function runTool(name, args, options) {
       throw httpError(501, 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm)')
     }
     throw error
+  }
+}
+
+/**
+ * Run at most `limit` tasks at once, queueing the rest in order. Poppler is a
+ * process per page, so a fast scroll must not spawn an unbounded number.
+ * @param limit - how many tasks may run concurrently.
+ * @returns a runner that resolves with its task's result.
+ */
+export function createLimiter(limit) {
+  let active = 0
+  const queue = []
+  return async function run(task) {
+    if (active >= limit) await new Promise((resolve) => queue.push(resolve))
+    active += 1
+    try {
+      return await task()
+    } finally {
+      active -= 1
+      const next = queue.shift()
+      if (next !== undefined) next()
+    }
   }
 }
 
@@ -1223,6 +1246,8 @@ export function apply(ctx) {
     }
   }
 
+  const renderSlot = createLimiter(RENDER_CONCURRENCY)
+
   async function renderPage(id, pageNumber, dpi = PAGE_DPI) {
     const resolution = clampDpi(dpi)
     const key = `${id}:${pageNumber}:${resolution}`
@@ -1251,7 +1276,7 @@ export function apply(ctx) {
       }
       await mkdir(target.pageDir, { recursive: true })
       const temporary = join(temp, `page-${id}-${pageNumber}-${randomUUID()}`)
-      await runTool('pdftoppm', [
+      await renderSlot(() => runTool('pdftoppm', [
         '-png',
         '-r',
         String(resolution),
@@ -1262,7 +1287,7 @@ export function apply(ctx) {
         '-singlefile',
         target.pdf,
         temporary,
-      ], { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 })
+      ], { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }))
       await rename(`${temporary}.png`, file)
       const bytes = await readFile(file)
       rememberImage(key, bytes)
