@@ -16,8 +16,16 @@
     "locale/*.json",
     "icon.svg",
     "README.md",
-    "README_zh.md"
+    "README_zh.md",
+    "docs"
   ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.2-rc.5 <0.3.0"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

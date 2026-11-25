@@ -240,7 +240,7 @@ function escapeAttribute(value) {
 }
 
 /** Collapse a page-provided line so it cannot leave the quoted passage. */
-function plainLine(value, max) {
+export function plainLine(value, max) {
   if (typeof value !== 'string') return ''
   return value
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
@@ -282,7 +282,7 @@ function originOf(req, appOrigin) {
 }
 
 /** Accept only a plain HTTP(S) address that is not the application itself. */
-function normalizeTarget(raw, appOrigin) {
+export function normalizeTarget(raw, appOrigin) {
   if (typeof raw !== 'string' || raw.trim() === '' || raw.length > 2_048) {
     throw httpError(400, 'a valid http(s) address is required')
   }
