@@ -50,6 +50,7 @@ window.__ModuleLoader__.load({
       'toolbar.previous': 'Previous match',
       'toolbar.next': 'Next match',
       'toolbar.matches': '{count} matches',
+      'toolbar.results': 'Matches in this document',
       'toolbar.noMatches': 'No matches',
       'toolbar.reading': 'Reading',
       'empty.title': 'Read a PDF, keep the conversation',
@@ -161,6 +162,7 @@ window.__ModuleLoader__.load({
       'toolbar.previous': '上一个匹配',
       'toolbar.next': '下一个匹配',
       'toolbar.matches': '{count} 处匹配',
+      'toolbar.results': '本文档中的匹配',
       'toolbar.noMatches': '没有匹配',
       'toolbar.reading': '正在阅读',
       'empty.title': '读 PDF，也不离开对话',
@@ -265,6 +267,34 @@ window.__ModuleLoader__.load({
 
     const POSITION_PREFIX = 'dsh.deepread.pos.'
 
+    /**
+     * Storage access that never throws. Private windows and full quotas reject
+     * reads and writes, and a reader should keep working without them.
+     */
+    function safeGet(key) {
+      try {
+        return window.localStorage.getItem(key)
+      } catch {
+        return null
+      }
+    }
+
+    function safeSet(key, value) {
+      try {
+        window.localStorage.setItem(key, value)
+      } catch {
+        // Storage is optional; the in-memory state still works.
+      }
+    }
+
+    function safeRemove(key) {
+      try {
+        window.localStorage.removeItem(key)
+      } catch {
+        // Storage is optional.
+      }
+    }
+
     function positionKey(id) {
       return `${POSITION_PREFIX}${id}`
     }
@@ -287,7 +317,7 @@ window.__ModuleLoader__.load({
 
     function readLocalPosition(id) {
       try {
-        const raw = window.localStorage.getItem(positionKey(id))
+        const raw = safeGet(positionKey(id))
         if (raw === null) return null
         return normalizeStoredPosition(JSON.parse(raw))
       } catch {
@@ -297,7 +327,7 @@ window.__ModuleLoader__.load({
 
     function writeLocalPosition(id, position) {
       try {
-        window.localStorage.setItem(positionKey(id), JSON.stringify({
+        safeSet(positionKey(id), JSON.stringify({
           page: position.page,
           ratio: position.ratio,
           zoom: position.zoom,
@@ -675,6 +705,15 @@ window.__ModuleLoader__.load({
 @media (max-width:900px){.dr-search-input{width:120px}.dr-doc-name{max-width:20vw}.dr-chat-pane{min-width:240px}}
 @media (max-width:760px){.dr-split{flex-direction:column}.dr-pdf-pane{flex:0 0 56%!important;min-width:0;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l1)}.dr-chat-pane{flex:1 1 auto;min-width:0;min-height:220px}.dr-divider{display:none}.dr-selection{left:8px;right:8px;bottom:8px}}
 .dr-split.dr-reader-only .dr-pdf-pane{flex:1 1 auto!important;border-right:none;border-bottom:none}
+.dr-search-group{position:relative}
+.dr-count-btn{border:0;background:transparent;padding:2px 6px;border-radius:6px;cursor:pointer;font:inherit;color:var(--dsw-alias-label-secondary)}
+.dr-count-btn:hover,.dr-count-btn[aria-expanded="true"]{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.dr-search-results{position:absolute;top:calc(100% + 8px);right:0;z-index:36;width:min(520px,88vw);max-height:min(360px,60vh);overflow:auto;padding:6px;display:flex;flex-direction:column;gap:2px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-overlay);box-shadow:0 14px 36px rgba(0,0,0,.22)}
+.dr-search-result{display:grid;grid-template-columns:44px minmax(0,1fr) 34px;gap:8px;align-items:center;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
+.dr-search-result:hover,.dr-search-result.dr-active{background:var(--dsw-alias-bg-layer-2)}
+.dr-result-page{font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
+.dr-result-snippet{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-primary)}
+.dr-result-count{font-size:11px;text-align:right;color:var(--dsw-alias-label-secondary)}
 `
 
     function StyleTag() {
@@ -751,7 +790,7 @@ window.__ModuleLoader__.load({
     // Page renderer: image under an absolutely positioned text layer. The
     // word boxes come from Poppler, so selection and copy are native.
     // ---------------------------------------------------------------------
-    const PageView = React.memo(function PageView({ docId, pageNumber, page, highlight }) {
+    const PageView = React.memo(function PageView({ docId, pageNumber, page, highlight, imageDpi }) {
       const shellRef = React.useRef(null)
       const [visible, setVisible] = React.useState(false)
       const [words, setWords] = React.useState(null)
@@ -804,7 +843,7 @@ window.__ModuleLoader__.load({
       }, [
         h('img', {
           key: 'img',
-          src: apiUrl(`/page/${docId}/${pageNumber}`),
+          src: apiUrl(`/page/${docId}/${pageNumber}?dpi=${imageDpi}`),
           alt: '',
           draggable: false,
           loading: 'lazy',
@@ -1002,7 +1041,7 @@ window.__ModuleLoader__.load({
       const genStorage = sessionId ? `dsh.deepread.termgen.${sessionId}` : ''
       const [generation, setGeneration] = React.useState(() => {
         if (!sessionId) return 0
-        const stored = Number(window.localStorage.getItem(`dsh.deepread.termgen.${sessionId}`))
+        const stored = Number(safeGet(`dsh.deepread.termgen.${sessionId}`))
         return Number.isInteger(stored) && stored >= 0 && stored < 1_000_000 ? stored : 0
       })
       const contentId = `deepread-terminal-${generation}`
@@ -1051,7 +1090,7 @@ window.__ModuleLoader__.load({
         const next = generation + 1
         if (genStorage !== '') {
           try {
-            window.localStorage.setItem(genStorage, String(next))
+            safeSet(genStorage, String(next))
           } catch {
             // Storage is optional; the in-memory generation still changes.
           }
@@ -1153,11 +1192,11 @@ window.__ModuleLoader__.load({
       const sessionIds = useSessions((state) => state.ids)
       const sessionsById = useSessions((state) => state.byId)
       const [pickedSession, setPickedSession] = React.useState(() => {
-        const stored = window.localStorage.getItem('dsh.deepread.session')
+        const stored = safeGet('dsh.deepread.session')
         return typeof stored === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(stored) ? stored : ''
       })
       const [lastSeen, setLastSeen] = React.useState(() => {
-        const stored = window.localStorage.getItem('dsh.deepread.lastSession')
+        const stored = safeGet('dsh.deepread.lastSession')
         return typeof stored === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(stored) ? stored : ''
       })
       const sessionId = pickedSession !== '' ? pickedSession : (currentId || lastSeen || undefined)
@@ -1166,7 +1205,7 @@ window.__ModuleLoader__.load({
         if (typeof currentId !== 'string' || currentId === '') return
         setLastSeen(currentId)
         try {
-          window.localStorage.setItem('dsh.deepread.lastSession', currentId)
+          safeSet('dsh.deepread.lastSession', currentId)
         } catch {
           // Storage can be unavailable; the in-memory value still works.
         }
@@ -1177,7 +1216,7 @@ window.__ModuleLoader__.load({
         if (sessionIds.includes(pickedSession)) return
         setPickedSession('')
         try {
-          window.localStorage.removeItem('dsh.deepread.session')
+          safeRemove('dsh.deepread.session')
         } catch {
           // Ignore storage failures.
         }
@@ -1186,8 +1225,8 @@ window.__ModuleLoader__.load({
       function chooseSession(id) {
         setPickedSession(id)
         try {
-          if (id === '') window.localStorage.removeItem('dsh.deepread.session')
-          else window.localStorage.setItem('dsh.deepread.session', id)
+          if (id === '') safeRemove('dsh.deepread.session')
+          else safeSet('dsh.deepread.session', id)
         } catch {
           // Ignore storage failures.
         }
@@ -1205,13 +1244,28 @@ window.__ModuleLoader__.load({
       const [docError, setDocError] = React.useState('')
       const [busy, setBusy] = React.useState('')
       const [zoom, setZoom] = React.useState(1)
+      // Page images arrive as rasters; ask for a denser one on retina screens
+      // and while zoomed in, then step it only when the value really changes.
+      const [imageDpi, setImageDpi] = React.useState(() => {
+        const ratio = typeof window.devicePixelRatio === 'number' ? Math.min(2, window.devicePixelRatio) : 1
+        return Math.min(300, Math.max(96, Math.round((130 * ratio) / 10) * 10))
+      })
+      React.useEffect(() => {
+        const ratio = typeof window.devicePixelRatio === 'number' ? Math.min(2, window.devicePixelRatio) : 1
+        const wanted = Math.min(300, Math.max(96, Math.round((130 * ratio * zoom) / 10) * 10))
+        const timer = window.setTimeout(() => setImageDpi(wanted), 350)
+        return () => window.clearTimeout(timer)
+      }, [zoom])
       const [split, setSplit] = React.useState(() => {
-        const saved = Number(window.localStorage.getItem('dsh.deepread.split'))
+        const saved = Number(safeGet('dsh.deepread.split'))
         return Number.isFinite(saved) && saved >= 30 && saved <= 78 ? saved : 54
       })
       const [pageInput, setPageInput] = React.useState('1')
       const [searchQuery, setSearchQuery] = React.useState('')
       const [search, setSearch] = React.useState(null)
+      const [searchOpen, setSearchOpen] = React.useState(false)
+      const searchGroupRef = React.useRef(null)
+      const searchInputRef = React.useRef(null)
       const [selection, setSelection] = React.useState(null)
       const [web, setWeb] = React.useState(null)
       /**
@@ -1220,16 +1274,16 @@ window.__ModuleLoader__.load({
        * conversation, terminal and selection bar stay exactly where they are.
        */
       const [source, setSource] = React.useState(() => (
-        window.localStorage.getItem('dsh.deepread.source') === 'web' ? 'web' : 'pdf'
+        safeGet('dsh.deepread.source') === 'web' ? 'web' : 'pdf'
       ))
       const [webNav, setWebNav] = React.useState(() => {
-        const stored = window.localStorage.getItem('dsh.deepread.weburl')
+        const stored = safeGet('dsh.deepread.weburl')
         const valid = typeof stored === 'string' ? normalizeAddress(stored) : null
         return valid === null || stored === '' ? { entries: [], index: 0 } : { entries: [stored], index: 0 }
       })
       const [webAddress, setWebAddress] = React.useState('')
       const [webMode, setWebMode] = React.useState(() => (
-        window.localStorage.getItem('dsh.deepread.webmode') === 'direct' ? 'direct' : 'read'
+        safeGet('dsh.deepread.webmode') === 'direct' ? 'direct' : 'read'
       ))
       const [webTitle, setWebTitle] = React.useState('')
       const [webLoading, setWebLoading] = React.useState(false)
@@ -1240,7 +1294,7 @@ window.__ModuleLoader__.load({
        * into a magnified bitmap. 0.5–2 in steps of 0.1.
        */
       const [webZoom, setWebZoom] = React.useState(() => {
-        const stored = Number(window.localStorage.getItem('dsh.deepread.webzoom'))
+        const stored = Number(safeGet('dsh.deepread.webzoom'))
         return Number.isFinite(stored) && stored >= 0.5 && stored <= 2 ? Math.round(stored * 10) / 10 : 1
       })
       const [webViewport, setWebViewport] = React.useState({ width: 0, height: 0 })
@@ -1248,16 +1302,16 @@ window.__ModuleLoader__.load({
       const [toast, setToast] = React.useState(null)
       const [asking, setAsking] = React.useState(false)
       const [outline, setOutline] = React.useState({ state: 'idle', rows: [], error: '' })
-      const [tocOpen, setTocOpen] = React.useState(() => window.localStorage.getItem('dsh.deepread.toc') === '1')
+      const [tocOpen, setTocOpen] = React.useState(() => safeGet('dsh.deepread.toc') === '1')
       const [tocFilter, setTocFilter] = React.useState('')
       const [expanded, setExpanded] = React.useState(() => new Set())
       const [currentPage, setCurrentPage] = React.useState(1)
       const [sideMode, setSideMode] = React.useState(() => {
-        const saved = window.localStorage.getItem('dsh.deepread.sidemode')
+        const saved = safeGet('dsh.deepread.sidemode')
         return saved === 'chat' || saved === 'terminal' || saved === 'split' ? saved : 'split'
       })
       const [sideSplit, setSideSplit] = React.useState(() => {
-        const saved = Number(window.localStorage.getItem('dsh.deepread.sidesplit'))
+        const saved = Number(safeGet('dsh.deepread.sidesplit'))
         return Number.isFinite(saved) && saved >= 28 && saved <= 75 ? saved : 55
       })
       const [termEnabled, setTermEnabled] = React.useState(sideMode !== 'chat')
@@ -1267,7 +1321,7 @@ window.__ModuleLoader__.load({
        * side mode and split stay untouched, so expanding restores exactly the
        * layout the reader had before.
        */
-      const [readerOnly, setReaderOnly] = React.useState(() => window.localStorage.getItem('dsh.deepread.readeronly') === '1')
+      const [readerOnly, setReaderOnly] = React.useState(() => safeGet('dsh.deepread.readeronly') === '1')
       // With nothing open there is no reading area to widen, so the preference
       // only applies with a document and the toggle is not offered without one.
       const hasContent = doc !== null || (source === 'web' && webUrl !== '')
@@ -1459,7 +1513,7 @@ window.__ModuleLoader__.load({
       }, [toast])
 
       React.useEffect(() => {
-        const stored = window.localStorage.getItem('dsh.deepread.doc')
+        const stored = safeGet('dsh.deepread.doc')
         if (stored === null || !/^[a-f0-9]{24}$/.test(stored)) return undefined
         let cancelled = false
         setBusy(tx('loading.opening'))
@@ -1473,7 +1527,7 @@ window.__ModuleLoader__.load({
             setDoc(value)
           })
           .catch(() => {
-            window.localStorage.removeItem('dsh.deepread.doc')
+            safeRemove('dsh.deepread.doc')
           })
           .finally(() => {
             if (!cancelled) setBusy('')
@@ -1488,6 +1542,7 @@ window.__ModuleLoader__.load({
         const query = searchQuery.trim()
         if (query === '') {
           setSearch(null)
+          setSearchOpen(false)
           return undefined
         }
         const id = window.setTimeout(() => {
@@ -1498,8 +1553,11 @@ window.__ModuleLoader__.load({
             .then((response) => readJsonResponse(response))
             .then((value) => {
               if (searchSeq.current !== seq) return
-              setSearch({ query, loading: false, total: value.total ?? 0, pages: Array.isArray(value.pages) ? value.pages : [], index: 0, error: null })
-              if (Array.isArray(value.pages) && value.pages.length > 0) goToPage(value.pages[0].page)
+              const pages = Array.isArray(value.pages) ? value.pages : []
+              setSearch({ query, loading: false, total: value.total ?? 0, pages, index: 0, error: null })
+              // Show the hits without moving the reader: jumping while someone
+              // is still typing yanks the page away from what they were reading.
+              if (pages.length > 0 && document.activeElement === searchInputRef.current) setSearchOpen(true)
             })
             .catch((error) => {
               if (searchSeq.current !== seq) return
@@ -1509,16 +1567,29 @@ window.__ModuleLoader__.load({
         return () => window.clearTimeout(id)
       }, [searchQuery, doc])
 
+      // A pointer outside the search cluster dismisses the hit list, the same
+      // way a menu closes; the toggle button stays inside the cluster.
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.source', source)
+        if (!searchOpen) return undefined
+        function onPointerDown(event) {
+          const group = searchGroupRef.current
+          if (group !== null && group.contains(event.target)) return
+          setSearchOpen(false)
+        }
+        document.addEventListener('pointerdown', onPointerDown, true)
+        return () => document.removeEventListener('pointerdown', onPointerDown, true)
+      }, [searchOpen])
+
+      React.useEffect(() => {
+        safeSet('dsh.deepread.source', source)
       }, [source])
 
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.webmode', webMode)
+        safeSet('dsh.deepread.webmode', webMode)
       }, [webMode])
 
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.webzoom', String(webZoom))
+        safeSet('dsh.deepread.webzoom', String(webZoom))
       }, [webZoom])
 
       /** The frame's layout box follows the pane, so zoom needs the pane size. */
@@ -1543,7 +1614,7 @@ window.__ModuleLoader__.load({
         setWebAddress(webUrl)
         if (webUrl !== '') {
           try {
-            window.localStorage.setItem('dsh.deepread.weburl', webUrl)
+            safeSet('dsh.deepread.weburl', webUrl)
           } catch {
             // Storage is optional; the in-memory value still works.
           }
@@ -1617,7 +1688,7 @@ window.__ModuleLoader__.load({
       function setCollapsed(next) {
         setReaderOnly(next)
         try {
-          window.localStorage.setItem('dsh.deepread.readeronly', next ? '1' : '0')
+          safeSet('dsh.deepread.readeronly', next ? '1' : '0')
         } catch {
           // Storage is optional; the in-memory state still applies.
         }
@@ -1686,19 +1757,19 @@ window.__ModuleLoader__.load({
       }
 
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.split', String(Math.round(split)))
+        safeSet('dsh.deepread.split', String(Math.round(split)))
       }, [split])
 
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.sidemode', sideMode)
+        safeSet('dsh.deepread.sidemode', sideMode)
       }, [sideMode])
 
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.sidesplit', String(Math.round(sideSplit)))
+        safeSet('dsh.deepread.sidesplit', String(Math.round(sideSplit)))
       }, [sideSplit])
 
       React.useEffect(() => {
-        window.localStorage.setItem('dsh.deepread.toc', tocOpen ? '1' : '0')
+        safeSet('dsh.deepread.toc', tocOpen ? '1' : '0')
       }, [tocOpen])
 
       React.useEffect(() => {
@@ -1902,7 +1973,7 @@ window.__ModuleLoader__.load({
           const value = await readJsonResponse(response)
           if (!value || typeof value.id !== 'string') throw new Error('the Host returned no document')
           const position = await loadStoredPosition(value.id)
-          window.localStorage.setItem('dsh.deepread.doc', value.id)
+          safeSet('dsh.deepread.doc', value.id)
           applyLoadedPosition(value, position)
           setDoc(value)
           setSearchQuery('')
@@ -2276,11 +2347,12 @@ window.__ModuleLoader__.load({
               onClick: () => setZoom((value) => Math.min(2.4, Math.round((value + 0.1) * 10) / 10)),
             }, h(PlusIcon, {})),
           ]),
-          source === 'pdf' && doc !== null && h('div', { key: 'search', className: 'dr-group' }, [
+          source === 'pdf' && doc !== null && h('div', { key: 'search', ref: searchGroupRef, className: 'dr-group dr-search-group' }, [
             h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
               h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
               h('input', {
                 key: 'input',
+                ref: searchInputRef,
                 className: 'dr-input dr-search-input',
                 value: searchQuery,
                 placeholder: tx('toolbar.find'),
@@ -2293,11 +2365,24 @@ window.__ModuleLoader__.load({
                     if (search?.pages?.length) cycleMatch(event.shiftKey ? -1 : 1)
                     else if (doc !== null) goToPage(1)
                   }
-                  if (event.key === 'Escape') setSearchQuery('')
+                  if (event.key === 'Escape') {
+                    if (searchOpen) setSearchOpen(false)
+                    else setSearchQuery('')
+                  }
                 },
               }),
             ]),
-            search !== null && !search.loading && h('span', { key: 'count', className: 'dr-match-count' }, search.total > 0 ? tx('toolbar.matches', { count: search.total }) : tx('toolbar.noMatches')),
+            search !== null && !search.loading && (search.pages.length > 0
+              ? h('button', {
+                key: 'count',
+                type: 'button',
+                className: 'dr-match-count dr-count-btn',
+                title: tx('toolbar.results'),
+                'aria-label': tx('toolbar.results'),
+                'aria-expanded': searchOpen,
+                onClick: () => setSearchOpen((value) => !value),
+              }, tx('toolbar.matches', { count: search.total }))
+              : h('span', { key: 'count', className: 'dr-match-count' }, tx('toolbar.noMatches'))),
             search !== null && search.pages.length > 0 && h('button', {
               key: 'prev',
               type: 'button',
@@ -2314,6 +2399,27 @@ window.__ModuleLoader__.load({
               'aria-label': tx('toolbar.next'),
               onClick: () => cycleMatch(1),
             }, h(ChevronIcon, { direction: 'down' })),
+            searchOpen && search !== null && !search.loading && search.pages.length > 0 && h('div', {
+              key: 'results',
+              className: 'dr-search-results',
+              role: 'listbox',
+              'aria-label': tx('toolbar.results'),
+            }, search.pages.slice(0, 40).map((row, index) => h('button', {
+              key: `${row.page}-${index}`,
+              type: 'button',
+              role: 'option',
+              'aria-selected': index === search.index,
+              className: `dr-search-result${index === search.index ? ' dr-active' : ''}`,
+              onClick: () => {
+                setSearch((current) => (current === null ? current : { ...current, index }))
+                goToPage(row.page)
+                setSearchOpen(false)
+              },
+            }, [
+              h('span', { key: 'p', className: 'dr-result-page' }, String(row.page)),
+              h('span', { key: 's', className: 'dr-result-snippet' }, typeof row.snippet === 'string' ? row.snippet : ''),
+              h('span', { key: 'c', className: 'dr-result-count' }, String(row.count ?? '')),
+            ]))),
           ]),
           source === 'pdf' && doc !== null && h('button', {
             key: 'toc',
@@ -2422,6 +2528,7 @@ window.__ModuleLoader__.load({
                   h('small', { key: 'h' }, tx('empty.hint')),
                 ])
                 : (Array.isArray(doc.texts) ? doc.texts : []).map((page, index) => h(PageView, {
+                  imageDpi,
                   key: `${doc.id}-${index + 1}`,
                   docId: doc.id,
                   pageNumber: index + 1,

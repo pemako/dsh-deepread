@@ -20,7 +20,7 @@ Drag the divider to change the split. A narrow window stacks the two sides inste
 
 Select text in either mode and the same bar appears at the bottom. Copy rebuilds plain text from the text layer, so Chinese doesn't come out with spaces between characters. Search opens a web search card inside the PDF; copying also opens it with the text already filled in. Ask AI sends the selection to the real conversation on the right as an ordinary user message, with the page title and address along for the ride when you're reading a page.
 
-The toolbar jumps to a page, changes zoom, and finds text in the document. Outline shows the PDF bookmarks as a tree you can filter and click through, with the current page marked.
+The toolbar jumps to a page, changes zoom, and finds text in the document. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom re-renders pages at a higher resolution, so text stays sharp when magnified. Outline shows the PDF bookmarks as a tree you can filter and click through, with the current page marked.
 
 Page mode has its own zoom as well: the −/percentage/+ control, or ⌘/Ctrl with the scroll wheel. It changes the layout width of the iframe and then scales the result, so text reflows the way browser zoom does instead of becoming a magnified picture. The level is remembered.
 

@@ -18,9 +18,11 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
+import { lookup } from 'node:dns/promises'
 import { createWriteStream } from 'node:fs'
 import { mkdir, open, readFile, rename, rm, stat, writeFile, access } from 'node:fs/promises'
 import { once } from 'node:events'
+import { isIP } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { finished } from 'node:stream/promises'
@@ -37,6 +39,9 @@ const MAX_TEXT_OUTPUT = 64 * 1024 * 1024
 const MAX_SELECTION = 12_000
 const MAX_QUESTION = 2_000
 const PAGE_DPI = 130
+const MIN_RENDER_DPI = 96
+const MAX_RENDER_DPI = 300
+const MAX_REDIRECTS = 5
 const MAX_PAGE_BYTES = 12 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 25_000
 
@@ -297,6 +302,74 @@ function normalizeTarget(raw, appOrigin) {
     throw httpError(400, 'the application origin cannot be proxied')
   }
   return url
+}
+
+/**
+ * Addresses the reader proxy refuses to reach: everything on a private or
+ * otherwise internal network, plus the cloud metadata endpoints. Loopback
+ * stays available because reading a local dev server is a supported use, and
+ * `::1` / `127.0.0.1` only ever reach this machine.
+ * @param address - an IPv4 or IPv6 address literal.
+ * @returns whether the address is off limits for the reader.
+ */
+export function isBlockedIp(address) {
+  const family = isIP(address)
+  if (family === 0) return false
+  const lower = String(address).toLowerCase()
+  if (family === 6) {
+    if (lower === '::1') return false
+    if (lower === '::') return true
+    if (lower.startsWith('::ffff:')) return isBlockedIp(lower.slice('::ffff:'.length))
+    // fc00::/7 unique-local and fe80::/10 link-local.
+    if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true
+    if (/^fe[89ab][0-9a-f]:/.test(lower)) return true
+    return false
+  }
+  const parts = lower.split('.').map(Number)
+  const [a, b] = parts
+  if (a === 127) return false
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  if (a === 169 && b === 254) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  if (a === 0 || a >= 224) return true
+  return false
+}
+
+/**
+ * Resolve a target before fetching it and refuse anything that lands on an
+ * internal network. Literal addresses are checked without a lookup.
+ * @param url - the normalized target.
+ * @throws {Error} with status 400 or 502 when the host is internal or unknown.
+ */
+async function assertInternalBlocked(url) {
+  const host = url.hostname.replace(/^\[|\]$/g, '')
+  if (isIP(host) !== 0) {
+    if (isBlockedIp(host)) throw httpError(400, 'this address points at a private network')
+    return
+  }
+  let addresses
+  try {
+    addresses = await lookup(host, { all: true, verbatim: true })
+  } catch {
+    throw httpError(502, `could not resolve ${host}`)
+  }
+  if (!Array.isArray(addresses) || addresses.length === 0) {
+    throw httpError(502, `could not resolve ${host}`)
+  }
+  for (const entry of addresses) {
+    if (isBlockedIp(entry.address)) {
+      throw httpError(400, 'this host resolves to a private network address')
+    }
+  }
+}
+
+/** Clamp a requested render resolution to the range Poppler is asked for. */
+export function clampDpi(value) {
+  const dpi = Number(value)
+  if (!Number.isFinite(dpi) || dpi <= 0) return PAGE_DPI
+  return Math.min(MAX_RENDER_DPI, Math.max(MIN_RENDER_DPI, Math.round(dpi / 10) * 10))
 }
 
 /** Detect the document encoding before decoding, so legacy pages stay readable. */
@@ -560,13 +633,20 @@ async function readCapped(response) {
   return Buffer.concat(chunks, size)
 }
 
-async function handlePage(req, res, requestUrl, appOrigin) {
-  const bridgeUrl = `${originOf(req, appOrigin)}${ROUTE}/bridge.js`
-  const target = normalizeTarget(requestUrl.searchParams.get('url'), appOrigin)
-  let response
-  try {
-    response = await fetch(target.href, {
-      redirect: 'follow',
+/**
+ * Follow a navigation by hand so every hop is validated before it is
+ * fetched: a redirect cannot carry the proxy onto an internal network or back
+ * into the application, which `redirect: 'follow'` would hide.
+ * @param start - the already-normalized first target.
+ * @param appOrigin - the application's own origin, refused on every hop.
+ * @returns the final response and the URL that produced it.
+ */
+async function fetchPage(start, appOrigin) {
+  let target = start
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    await assertInternalBlocked(target)
+    const response = await fetch(target.href, {
+      redirect: 'manual',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: {
         'user-agent': USER_AGENT,
@@ -575,29 +655,45 @@ async function handlePage(req, res, requestUrl, appOrigin) {
         'upgrade-insecure-requests': '1',
       },
     })
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error)
-    sendHtml(res, 502, errorPageHtml(
-      'This page could not be loaded',
-      `The reader could not reach it (${reason}). Check the address or the network, or open it in the system browser.`,
-      target.href,
-      bridgeUrl,
-    ))
-    return
+    if (response.status < 300 || response.status >= 400) return { response, finalUrl: target.href }
+    const location = response.headers.get('location')
+    if (location === null || location === '') return { response, finalUrl: target.href }
+    if (hop === MAX_REDIRECTS) break
+    let next
+    try {
+      next = new URL(location, target.href)
+    } catch {
+      throw httpError(502, 'the page redirected to an invalid address')
+    }
+    if (next.protocol !== 'http:' && next.protocol !== 'https:') {
+      throw httpError(502, 'the page redirected to a non-http address')
+    }
+    if (isAppAddress(next, appOrigin)) {
+      throw httpError(502, 'the page redirects into the application')
+    }
+    target = next
   }
+  throw httpError(502, 'the page redirected too many times')
+}
 
-  const finalUrl = response.url === '' ? target.href : response.url
-  let settled
+async function handlePage(req, res, requestUrl, appOrigin) {
+  const bridgeUrl = `${originOf(req, appOrigin)}${ROUTE}/bridge.js`
+  const target = normalizeTarget(requestUrl.searchParams.get('url'), appOrigin)
+  let response
+  let finalUrl
   try {
-    settled = new URL(finalUrl)
-  } catch {
-    settled = target
-  }
-  if (isAppAddress(settled, appOrigin)) {
-    sendHtml(res, 502, errorPageHtml(
-      'This page redirects into the application',
-      'The reader refuses to fetch the application itself through its proxy.',
-      '',
+    const page = await fetchPage(target, appOrigin)
+    response = page.response
+    finalUrl = page.finalUrl
+  } catch (error) {
+    const status = Number.isInteger(error?.status) ? error.status : 502
+    const reason = error instanceof Error ? error.message : String(error)
+    sendHtml(res, status, errorPageHtml(
+      status === 400 ? 'This address is not allowed here' : 'This page could not be loaded',
+      status === 400
+        ? reason
+        : `The reader could not reach it (${reason}). Check the address or the network, or open it in the system browser.`,
+      target.href,
       bridgeUrl,
     ))
     return
@@ -847,6 +943,32 @@ export function apply(ctx) {
     return meta
   }
 
+  /**
+   * Reuse the stored analysis when the same bytes were opened before. The
+   * document id is the content hash, so a hit means the files on disk still
+   * describe this PDF; only the display name can differ per opening.
+   * @param id - the content-addressed document id.
+   * @param name - the display name of this opening.
+   * @returns the stored analysis, or undefined when it has to be rebuilt.
+   */
+  async function reuseAnalysis(id, name) {
+    try {
+      const [documentPages, metaValue] = await Promise.all([loadText(id), loadMeta(id)])
+      if (!Array.isArray(documentPages) || documentPages.length === 0) return undefined
+      if (!Number.isInteger(metaValue?.pages) || metaValue.pages < 1) return undefined
+      if (documentPages.length < metaValue.pages) return undefined
+      if (metaValue.name !== name) {
+        metaValue.name = name
+        await dirsReady
+        await writeFile(paths(id).meta, JSON.stringify(metaValue), 'utf8')
+      }
+      return { meta: metaValue, documentPages, reused: true }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') ctx.logger?.warn?.(error)
+      return undefined
+    }
+  }
+
   async function receivePdf(req) {
     await dirsReady
     const tempPath = join(temp, `${randomUUID()}.pdf`)
@@ -880,6 +1002,8 @@ export function apply(ctx) {
 
   async function analyze(id, name) {
     await dirsReady
+    const cached = await reuseAnalysis(id, name)
+    if (cached !== undefined) return cached
     const { pdf, text, meta } = paths(id)
     const info = await runTool('pdfinfo', [pdf], { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 })
     const parsed = parseInfo(info.stdout)
@@ -943,8 +1067,9 @@ export function apply(ctx) {
     }
   }
 
-  async function renderPage(id, pageNumber) {
-    const key = `${id}:${pageNumber}`
+  async function renderPage(id, pageNumber, dpi = PAGE_DPI) {
+    const resolution = clampDpi(dpi)
+    const key = `${id}:${pageNumber}:${resolution}`
     const cached = imageCache.get(key)
     if (cached !== undefined) return cached
     const pending = renders.get(key)
@@ -953,23 +1078,27 @@ export function apply(ctx) {
       await dirsReady
       const target = paths(id)
       const prefix = join(target.pageDir, String(pageNumber))
-      const file = `${prefix}.png`
-      try {
-        const present = await stat(file)
-        if (present.size > 0) {
-          const bytes = await readFile(file)
-          rememberImage(key, bytes)
-          return bytes
+      const file = `${prefix}@${resolution}.png`
+      // Pages rendered before resolution handling live at `<page>.png`.
+      const candidates = resolution === PAGE_DPI ? [file, `${prefix}.png`] : [file]
+      for (const candidate of candidates) {
+        try {
+          const present = await stat(candidate)
+          if (present.size > 0) {
+            const bytes = await readFile(candidate)
+            rememberImage(key, bytes)
+            return bytes
+          }
+        } catch {
+          // Try the next candidate, then render below.
         }
-      } catch {
-        // Render below.
       }
       await mkdir(target.pageDir, { recursive: true })
       const temporary = join(temp, `page-${id}-${pageNumber}-${randomUUID()}`)
       await runTool('pdftoppm', [
         '-png',
         '-r',
-        String(PAGE_DPI),
+        String(resolution),
         '-f',
         String(pageNumber),
         '-l',
@@ -1313,7 +1442,7 @@ export function apply(ctx) {
           if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
           throw error
         }
-        sendPng(res, await renderPage(id, number))
+        sendPng(res, await renderPage(id, number, clampDpi(url.searchParams.get('dpi'))))
         return
       }
       const positionMatch = new RegExp(`^${ROUTE}/position/([a-f0-9]{24})$`).exec(path)
