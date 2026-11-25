@@ -667,7 +667,7 @@ window.__ModuleLoader__.load({
 .dr-more-label{font-size:10px;color:var(--dsw-alias-label-secondary)}
 .dr-more .dr-mode-switch{width:100%}
 .dr-more .dr-mode-btn{flex:1 1 0;height:24px}
-.dr-more-select{flex:none;height:26px;width:100%;max-width:100%}
+.dr-more .dr-session-select{flex:none;height:26px;width:100%;max-width:100%}
 .dr-more-sep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1)}
 .dr-address-input{flex:1 1 180px;width:260px;max-width:260px;min-width:120px}
 .dr-brand{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:13px;font-weight:600;letter-spacing:.01em}
