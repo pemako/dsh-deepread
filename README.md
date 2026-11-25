@@ -14,7 +14,7 @@ Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appear
 
 ## Getting going
 
-Click DeepRead in the sidebar. For a PDF, hit Open PDF and pick a file; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
+Click DeepRead in the sidebar. For a PDF, choose a file from the empty state; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
 
 Drag the divider to change the split. A narrow window stacks the two sides instead.
 

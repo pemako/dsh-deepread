@@ -56,6 +56,7 @@ window.__ModuleLoader__.load({
       'empty.title': 'Read a PDF, keep the conversation',
       'empty.body': 'The PDF stays on the left. The live session stays on the right, so you can ask about a page without leaving it.',
       'empty.action': 'Choose a PDF',
+      'empty.web': 'Read a web page',
       'empty.hint': 'Text is selectable. Copying a passage offers search and ask.',
       'loading.uploading': 'Uploading and reading “{name}”…',
       'loading.opening': 'Opening PDF…',
@@ -191,6 +192,7 @@ window.__ModuleLoader__.load({
       'empty.title': '读 PDF，也不离开对话',
       'empty.body': 'PDF 占据左半边，当前会话就在右半边。看页面的同时可以直接提问，不用来回切换。',
       'empty.action': '选择 PDF',
+      'empty.web': '读一个网页',
       'empty.hint': '文字可选中；复制一段后会出现搜索和提问按钮。',
       'loading.uploading': '正在上传并解析“{name}”…',
       'loading.opening': '正在打开 PDF…',
@@ -671,6 +673,7 @@ window.__ModuleLoader__.load({
 .dr-empty h3{margin:0;font-size:16px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dr-empty p{max-width:390px;margin:0;font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.6}
 .dr-empty small{max-width:390px;color:var(--dsw-alias-label-secondary);opacity:.8;font-size:11px}
+.dr-empty-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px}
 .dr-viewer{flex:1 1 auto;min-height:0;overflow:auto;position:relative;padding:16px 16px 92px;background:var(--dsw-alias-bg-base);scrollbar-gutter:stable}
 .dr-page{position:relative;width:calc(100% * var(--dr-zoom,1));margin:0 auto 16px;overflow:hidden;background:#fff;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.16);isolation:isolate;content-visibility:auto;contain-intrinsic-size:auto 900px}
 .dr-page img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:fill;user-select:none;-webkit-user-drag:none}
@@ -2524,13 +2527,13 @@ window.__ModuleLoader__.load({
               onClick: () => setSource('web'),
             }, tx('source.web')),
           ]),
-          source === 'pdf' && h('button', {
+          source === 'pdf' && doc !== null && h('button', {
             key: 'open',
             type: 'button',
-            className: 'dr-btn dr-primary',
+            className: 'dr-btn',
             onClick: () => fileRef.current?.click(),
             disabled: Boolean(busy),
-          }, [h(OpenIcon, { key: 'i' }), doc === null ? tx('toolbar.open') : tx('toolbar.replace')]),
+          }, [h(OpenIcon, { key: 'i' }), tx('toolbar.replace')]),
           h('input', {
             key: 'file',
             ref: fileRef,
@@ -2542,11 +2545,11 @@ window.__ModuleLoader__.load({
               if (file) openFile(file)
             },
           }),
-          source === 'pdf' && h('span', {
+          source === 'pdf' && doc !== null && h('span', {
             key: 'name',
             className: 'dr-doc-name',
-            title: doc === null ? tx('toolbar.untitled') : doc.name,
-          }, doc === null ? tx('toolbar.untitled') : doc.name),
+            title: doc.name,
+          }, doc.name),
           source === 'pdf' && doc !== null && h('span', { key: 'pages', className: 'dr-doc-meta' }, tx('doc.pages', { count: doc.pages })),
           source === 'web' && h('form', {
             key: 'address',
@@ -2972,13 +2975,21 @@ window.__ModuleLoader__.load({
                   h(BookIcon, { key: 'i', size: 38 }),
                   h('h3', { key: 't' }, tx('empty.title')),
                   h('p', { key: 'b' }, tx('empty.body')),
-                  h('button', {
-                    key: 'a',
-                    type: 'button',
-                    className: 'dr-btn dr-primary',
-                    onClick: () => fileRef.current?.click(),
-                    disabled: Boolean(busy),
-                  }, [h(OpenIcon, { key: 'i' }), tx('empty.action')]),
+                  h('div', { key: 'actions', className: 'dr-empty-actions' }, [
+                    h('button', {
+                      key: 'pdf',
+                      type: 'button',
+                      className: 'dr-btn dr-primary',
+                      onClick: () => fileRef.current?.click(),
+                      disabled: Boolean(busy),
+                    }, [h(OpenIcon, { key: 'i' }), tx('empty.action')]),
+                    h('button', {
+                      key: 'web',
+                      type: 'button',
+                      className: 'dr-btn',
+                      onClick: () => setSource('web'),
+                    }, [h(GlobeIcon, { key: 'i' }), tx('empty.web')]),
+                  ]),
                   h('small', { key: 'h' }, tx('empty.hint')),
                 ])
                 : (Array.isArray(doc.texts) ? doc.texts : []).map((page, index) => h(PageView, {
