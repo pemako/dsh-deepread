@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Check both halves parse
         run: |
           node --check index.js

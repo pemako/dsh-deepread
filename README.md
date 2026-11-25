@@ -10,17 +10,17 @@ Open Plugins → Add plugin and enter:
 @pemako/dsh-deepread
 ```
 
-Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appears in the sidebar afterwards. PDFs are rendered by the local Poppler tools (`pdfinfo`, `pdftotext`, `pdftoppm`), so install those first.
+Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appears in the sidebar afterwards. PDF pages are drawn by the bundled pdfjs engine in the browser and their words come from the local `pdftotext`, so install Poppler first.
 
 ## Requirements
 
-Reading PDFs needs Poppler's `pdfinfo`, `pdftotext` and `pdftoppm` on the machine that runs DSH: `brew install poppler` on macOS, `apt install poppler-utils` on Debian/Ubuntu, `scoop install poppler` on Windows. A desktop launch may not see a Homebrew install, so the plugin looks in the usual locations and falls back to `PATH`; `DEEPREAD_POPPLER_DIR` points it at a custom directory. Poppler is a system program, not an npm package, so it cannot arrive as a dependency.
+PDF text needs Poppler's `pdftotext` on the machine that runs DSH: `brew install poppler` on macOS, `apt install poppler-utils` on Debian/Ubuntu, `scoop install poppler` on Windows. A desktop launch may not see a Homebrew install, so the plugin looks in the usual locations and falls back to `PATH`; `DEEPREAD_POPPLER_DIR` points it at a custom directory. Poppler is a system program, not an npm package, so it cannot arrive as a dependency.
 
-Bookmark outlines go through the system's PDFKit via `osascript`, which is macOS-only; the pane says so elsewhere and everything else keeps working.
+Pages are drawn by the bundled `pdfjs-dist` engine in the browser, and bookmark outlines come from it too, so nothing here is macOS-only.
 
 ## Getting going
 
-Click DeepRead in the sidebar. For a PDF, choose a file from the empty state; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
+Click DeepRead in the sidebar. For a PDF, choose a file from the empty state; it goes up to the Host, which extracts a text layer with coordinates using pdftotext, and the browser draws the pages themselves with pdfjs. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
 
 Drag the divider to change the split. A narrow window stacks the two sides instead.
 
@@ -28,7 +28,7 @@ Select text in either mode and the same bar appears at the bottom. Copy rebuilds
 
 Selections can also be kept. Pick a highlight colour, and the passage stays marked on the page; each highlight takes a note. The highlights button lists them by page, jumps to one, changes its colour or note, and removes it. They live next to the document on the Host, so they are still there after a restart and after switching computers.
 
-The toolbar keeps the reading controls on the left (page, zoom, find) and the actions on the right as icons: contents, highlights, documents, the right-pane layout, the session picker and the conversation entry. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom re-renders pages at a higher resolution, so text stays sharp when magnified. The contents icon opens the PDF bookmarks as a tree you can filter and click through, with the current page marked. Icons name themselves on hover, and when the window is too narrow for everything a More menu holds whatever no longer fits.
+The toolbar keeps the reading controls on the left (page, zoom, find) and the actions on the right as icons: contents, highlights, documents, the right-pane layout, the session picker and the conversation entry. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom redraws the page at its new size, so it stays sharp instead of blurring an upscaled bitmap. The contents icon opens the PDF bookmarks as a tree you can filter and click through, with the current page marked. Icons name themselves on hover, and when the window is too narrow for everything a More menu holds whatever no longer fits.
 
 The documents button keeps what the reader has stored, newest first. Open another one from that list, or remove one together with its highlights.
 
@@ -62,19 +62,21 @@ Links and GET search forms go back to the panel, which proxies them again, so th
 
 ## Files
 
-`index.js` is the Host half: upload and storage, Poppler parsing, the page image cache, document search, the `ctx.web.search` proxy, bookmark reading through `osascript` and `text/outline.jxa`, the page proxy and selection bridge, opening the system browser, and delivering a selection to `ctx.agents.get(sessionId).followup()`.
+`index.js` is the Host half: upload and storage, the `pdftotext` word extraction, the PDF file route with byte ranges, serving the bundled pdfjs engine, document search, the `ctx.web.search` proxy, the page proxy and selection bridge, opening the system browser, and delivering a selection to `ctx.agents.get(sessionId).followup()`.
 
-`client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, PDF images and the text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
+`client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, pdfjs canvases and the pdftotext text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
 
-State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, `notes/`, and `tmp/`. A document keeps its page index in `text/<id>.json` and its word boxes under `text/<id>.words/`, one file per page; book outlines are cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
+State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `notes/`, and `tmp/`. A document keeps its page index in `text/<id>.json` and its word boxes under `text/<id>.words/`, one file per page; highlights and notes live in `notes/<id>.json`, and positions in `positions.json`. Nothing else is stored: the browser draws each page from the PDF itself.
 
 ## Limits
 
-Poppler has to be installed. Without it, opening a PDF returns a 501 that says so.
+Poppler's `pdftotext` has to be installed. Without it, opening a PDF returns a 501 with install commands.
 
 Encrypted PDFs aren't supported.
 
 Scanned PDFs have no text layer, so you can look at the pages but selection, copy, and find won't work.
+
+A rotated page (a `/Rotate` entry) can put the text layer out of step with the drawn page.
 
 Web search uses whichever `ctx.web` provider DSH has configured. With none configured, the search card shows an error.
 

@@ -12,12 +12,15 @@ let origin = ''
 let server
 let home
 const asks = []
+const pdfBytes = Buffer.from('%PDF-1.7\n% fake fixture for the file route\n')
 
 before(async () => {
   home = await mkdtemp(join(tmpdir(), 'deepread-routes-'))
   process.env.DSH_HOME = home
   const root = join(home, 'deepread')
+  await mkdir(join(root, 'docs'), { recursive: true })
   await mkdir(join(root, 'text', `${docId}.words`), { recursive: true })
+  await writeFile(join(root, 'docs', `${docId}.pdf`), pdfBytes)
   // the stored shape: a page index plus one word file per page
   await writeFile(join(root, 'text', `${docId}.json`), JSON.stringify([
     { width: 612, height: 792, text: 'Hello world' },
@@ -128,11 +131,25 @@ test('a selection is sent in the reader\'s language', async () => {
   assert.match(english, /Explain this passage/)
 })
 
-test('outline failures come back as codes, not English sentences', async () => {
-  const value = await (await fetch(api(`/outline/${docId}`))).json()
-  assert.ok(Array.isArray(value.outline))
-  assert.equal(value.error, undefined)
-  if (value.outline.length === 0) assert.match(String(value.code), /^outline-/)
+
+test('the PDF is served whole and by byte range', async () => {
+  const whole = await fetch(api(`/file/${docId}`))
+  assert.equal(whole.status, 200)
+  assert.equal(whole.headers.get('content-type'), 'application/pdf')
+  assert.equal(Number(whole.headers.get('content-length')), pdfBytes.length)
+  assert.deepEqual(new Uint8Array(await whole.arrayBuffer()), new Uint8Array(pdfBytes))
+
+  const part = await fetch(api(`/file/${docId}`), { headers: { range: 'bytes=2-6' } })
+  assert.equal(part.status, 206)
+  assert.equal(part.headers.get('content-range'), `bytes 2-6/${pdfBytes.length}`)
+  assert.deepEqual(new Uint8Array(await part.arrayBuffer()), new Uint8Array(pdfBytes.subarray(2, 7)))
+})
+
+test('the engine assets are served to the browser', async () => {
+  const response = await fetch(api('/pdfjs/build/pdf.min.mjs'))
+  assert.equal(response.status, 200)
+  assert.match(response.headers.get('content-type'), /javascript/)
+  assert.ok((await response.text()).length > 1000)
 })
 
 test('the page proxy refuses an internal target before fetching', async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@pemako/dsh-deepread",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Read a PDF or a web page beside the live conversation, with bookmarks, a split chat/terminal pane, and selection search.",
   "type": "module",
   "exports": {
@@ -25,6 +25,9 @@
   "engines": {
     "node": ">=20",
     "dsh": ">=0.2.2-rc.5 <0.3.0"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.5.438"
   },
   "dsh": {
     "bundle": {

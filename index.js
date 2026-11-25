@@ -4,8 +4,8 @@
  * The browser half cannot read files from disk or call the web providers, so
  * this half owns three narrow Host capabilities:
  *
- *  - store an uploaded PDF and turn it into page images plus positioned words
- *    with the locally installed Poppler tools (`pdftoppm`, `pdftotext`);
+ *  - store an uploaded PDF and extract its positioned words with the locally
+ *    installed Poppler `pdftotext`, so the browser can draw pages itself;
  *  - proxy a web search through the composed `ctx.web` provider;
  *  - proxy one top-level web navigation at a time so a study page can be read
  *    beside the conversation, with a small bridge that reports selections;
@@ -19,14 +19,15 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { lookup } from 'node:dns/promises'
-import { createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile, access } from 'node:fs/promises'
 import { once } from 'node:events'
 import { isIP } from 'node:net'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { finished } from 'node:stream/promises'
 import { promisify } from 'node:util'
+import { createRequire } from 'node:module'
 
 const exec = promisify(execFile)
 
@@ -38,13 +39,11 @@ const MAX_JSON_BYTES = 1024 * 1024
 const MAX_TEXT_OUTPUT = 64 * 1024 * 1024
 const MAX_SELECTION = 12_000
 const MAX_QUESTION = 2_000
-const PAGE_DPI = 130
 const MIN_RENDER_DPI = 96
 const MAX_RENDER_DPI = 300
 const MAX_REDIRECTS = 5
 const MAX_PAGE_BYTES = 12 * 1024 * 1024
 const FETCH_TIMEOUT_MS = 25_000
-const RENDER_CONCURRENCY = 3
 
 /** The proxied document's own sandbox, combined with the iframe's attribute. */
 const PAGE_POLICY = "sandbox allow-scripts allow-forms; default-src 'none'; img-src * data: blob:; "
@@ -60,61 +59,20 @@ const openGate = { at: 0 }
 const HTML_TYPE = /^text\/html\b|^application\/xhtml\+xml\b/i
 
 /** PDFKit's outline reader, run through the system JavaScript bridge. */
-const OUTLINE_SCRIPT = String.raw`
-ObjC.import('Foundation');
-ObjC.import('PDFKit');
-function run(argv) {
-  try {
-    if (!argv || argv.length === 0) return JSON.stringify({ outline: [], error: 'missing path' });
-    const url = $.NSURL.fileURLWithPath(argv[0]);
-    const doc = $.PDFDocument.alloc.initWithURL(url);
-    if (!doc || doc.isNil()) return JSON.stringify({ outline: [], error: 'cannot open PDF' });
-    const root = doc.outlineRoot;
-    if (!root || root.isNil()) return JSON.stringify({ outline: [] });
-    const rows = [];
-    function text(value) {
-      try {
-        const unwrapped = ObjC.unwrap(value);
-        return unwrapped === undefined || unwrapped === null ? '' : String(unwrapped);
-      } catch (_) {
-        return '';
-      }
-    }
-    function walk(node, depth) {
-      let page = 0;
-      try {
-        const dest = node.destination;
-        if (dest && !dest.isNil()) {
-          const p = dest.page;
-          if (p && !p.isNil()) page = Number(doc.indexForPage(p)) + 1;
-        }
-      } catch (_) {
-        page = 0;
-      }
-      rows.push({ title: text(node.label), page: page, depth: depth });
-      const count = Number(node.numberOfChildren);
-      for (let i = 0; i < count; i++) {
-        const child = node.childAtIndex(i);
-        if (child && !child.isNil()) walk(child, depth + 1);
-      }
-    }
-    const count = Number(root.numberOfChildren);
-    for (let i = 0; i < count; i++) {
-      const child = root.childAtIndex(i);
-      if (child && !child.isNil()) walk(child, 0);
-    }
-    return JSON.stringify({ outline: rows });
-  } catch (error) {
-    return JSON.stringify({ outline: [], error: String(error) });
-  }
-}
-`;
 
 const DOC_ID = /^[a-f0-9]{24}$/
-const IMAGE_CACHE_LIMIT = 24
-const IMAGE_CACHE_BYTES = 48 * 1024 * 1024
 const TEXT_CACHE_LIMIT = 8
 const WORDS_CACHE_LIMIT = 64
+
+const requireFromHere = createRequire(import.meta.url)
+/** The pdfjs-dist install the browser loads its engine from; empty if absent. */
+const pdfjsRoot = (() => {
+  try {
+    return dirname(requireFromHere.resolve('pdfjs-dist/package.json'))
+  } catch {
+    return ''
+  }
+})()
 
 export const inject = ['webServer', 'web', 'agents']
 
@@ -158,7 +116,7 @@ async function runTool(name, args, options) {
     return await exec(await toolPath(name), args, options)
   } catch (error) {
     if (error?.code === 'ENOENT') {
-      throw httpError(501, 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm)', 'poppler-missing')
+      throw httpError(501, 'Reading PDF text needs Poppler\'s pdftotext', 'poppler-missing')
     }
     throw error
   }
@@ -199,7 +157,9 @@ const ERROR_TEXT = {
     'too-many-redirects': 'The page redirected too many times',
     'invalid-redirect': 'The page redirected to an invalid address',
     'non-http-redirect': 'The page redirected to a non-http address',
-    'poppler-missing': 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm). Install them with brew install poppler (macOS), apt install poppler-utils (Debian/Ubuntu) or scoop install poppler (Windows), or point DEEPREAD_POPPLER_DIR at the directory holding them.',
+    'poppler-missing': 'Reading PDF text needs Poppler\'s pdftotext. Install it with brew install poppler (macOS), apt install poppler-utils (Debian/Ubuntu) or scoop install poppler (Windows), or point DEEPREAD_POPPLER_DIR at the directory holding pdftotext.',
+    'pdfjs-missing': 'The PDF engine files are missing; reinstall the plugin.',
+    'invalid-asset': 'That engine asset path is not allowed.',
     'open-too-fast': 'Opening too quickly; wait a moment and try again',
     'no-readable-pages': 'This PDF has no readable pages',
     'encrypted-pdf': 'Password-protected PDFs are not supported',
@@ -241,7 +201,9 @@ const ERROR_TEXT = {
     'too-many-redirects': '页面重定向次数过多',
     'invalid-redirect': '页面重定向到了无效地址',
     'non-http-redirect': '页面重定向到了非 http 地址',
-    'poppler-missing': '需要安装 Poppler（pdfinfo、pdftotext、pdftoppm）：macOS 用 brew install poppler，Debian/Ubuntu 用 apt install poppler-utils，Windows 用 scoop install poppler；也可以把 DEEPREAD_POPPLER_DIR 指向它们所在的目录。',
+    'poppler-missing': '读取 PDF 文字需要 Poppler 的 pdftotext：macOS 用 brew install poppler，Debian/Ubuntu 用 apt install poppler-utils，Windows 用 scoop install poppler；也可以把 DEEPREAD_POPPLER_DIR 指向 pdftotext 所在的目录。',
+    'pdfjs-missing': '缺少 PDF 引擎文件，重新安装插件试试。',
+    'invalid-asset': '这个引擎资源路径不被允许。',
     'open-too-fast': '打开太频繁，稍等一下再试',
     'no-readable-pages': '这份 PDF 没有可读页面',
     'encrypted-pdf': '不支持加密或需要密码的 PDF',
@@ -365,15 +327,6 @@ function sendJson(res, status, value, headOnly = false) {
   res.end(headOnly ? undefined : body)
 }
 
-function sendPng(res, bytes, headOnly = false) {
-  res.writeHead(200, {
-    'content-type': 'image/png',
-    'content-length': bytes.length,
-    'cache-control': 'private, max-age=3600',
-    'x-content-type-options': 'nosniff',
-  })
-  res.end(headOnly ? undefined : bytes)
-}
 
 function readJson(req) {
   return new Promise((resolve, reject) => {
@@ -563,11 +516,6 @@ async function assertInternalBlocked(url) {
 }
 
 /** Clamp a requested render resolution to the range Poppler is asked for. */
-export function clampDpi(value) {
-  const dpi = Number(value)
-  if (!Number.isFinite(dpi) || dpi <= 0) return PAGE_DPI
-  return Math.min(MAX_RENDER_DPI, Math.max(MIN_RENDER_DPI, Math.round(dpi / 10) * 10))
-}
 
 /** Detect the document encoding before decoding, so legacy pages stay readable. */
 function charsetOf(contentType, head) {
@@ -1077,19 +1025,6 @@ export function parseBbox(xml) {
   return pages
 }
 
-function parseInfo(stdout) {
-  const read = (name) => {
-    const match = new RegExp(`^${name}:\\s*(.*)$`, 'm').exec(stdout)
-    return match === null ? '' : match[1].trim()
-  }
-  const pages = Number(read('Pages'))
-  return {
-    pages: Number.isInteger(pages) && pages > 0 ? pages : 0,
-    title: read('Title'),
-    encrypted: read('Encrypted').toLowerCase() === 'yes',
-    size: read('Page size'),
-  }
-}
 
 function cleanName(value) {
   if (typeof value !== 'string') return 'document.pdf'
@@ -1116,7 +1051,6 @@ export function apply(ctx) {
   const root = rootDir()
   const docs = join(root, 'docs')
   const texts = join(root, 'text')
-  const pages = join(root, 'pages')
   const temp = join(root, 'tmp')
   const notes = join(root, 'notes')
 
@@ -1126,16 +1060,8 @@ export function apply(ctx) {
   /** Word boxes for the pages being read, bounded by page count. */
   const wordsCache = new Map()
   const wordLoads = new Map()
-  /** Rendered page bytes, bounded by count and total size. */
-  const imageCache = new Map()
-  let imageCacheBytes = 0
-  /** In-flight page renders, so two scroll events share one Poppler run. */
-  const renders = new Map()
   /** Document metadata, including the original display name. */
   const metaCache = new Map()
-  /** Extracted bookmark trees, bounded like the other document caches. */
-  const outlineCache = new Map()
-  let outlineScriptReady
   /** Reading positions, one per document, persisted across browser origins. */
   const positionsFile = join(root, 'positions.json')
   const positions = new Map()
@@ -1199,7 +1125,6 @@ export function apply(ctx) {
 
   const dirsReady = mkdir(docs, { recursive: true })
     .then(() => mkdir(texts, { recursive: true }))
-    .then(() => mkdir(pages, { recursive: true }))
     .then(() => mkdir(temp, { recursive: true }))
     .then(() => mkdir(notes, { recursive: true }))
 
@@ -1209,7 +1134,6 @@ export function apply(ctx) {
     meta: join(texts, `${id}.meta.json`),
     outline: join(texts, `${id}.outline.json`),
     wordsDir: join(texts, `${id}.words`),
-    pageDir: join(pages, id),
   })
 
   function wordsPath(id, page) {
@@ -1304,6 +1228,9 @@ export function apply(ctx) {
    */
   async function pruneTemp(maxAge = 24 * 60 * 60 * 1000) {
     await dirsReady
+    // Page images came from Poppler; the browser draws pages now, so a cache
+    // left by an older build is dead weight.
+    await rm(join(root, 'pages'), { recursive: true, force: true }).catch(() => {})
     let names = []
     try {
       names = await readdir(temp)
@@ -1466,10 +1393,6 @@ export function apply(ctx) {
     const cached = await reuseAnalysis(id, name)
     if (cached !== undefined) return cached
     const { pdf, text, meta } = paths(id)
-    const info = await runTool('pdfinfo', [pdf], { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 })
-    const parsed = parseInfo(info.stdout)
-    if (parsed.encrypted) throw httpError(422, 'password-protected PDFs are not supported', 'encrypted-pdf')
-    if (parsed.pages === 0) throw httpError(422, 'this PDF has no readable pages', 'no-readable-pages')
 
     let documentPages = []
     try {
@@ -1479,33 +1402,24 @@ export function apply(ctx) {
       })
       documentPages = parseBbox(bbox.stdout)
     } catch (error) {
-      // A scanned PDF has no text layer, but its pages still render.
+      // Missing Poppler is a setup problem, not an unreadable file.
+      if (error?.status === 501) throw error
+      if (/password|encrypted/i.test(String(error?.stderr ?? error?.message ?? ''))) {
+        throw httpError(422, 'password-protected PDFs are not supported', 'encrypted-pdf')
+      }
       if (error?.code !== 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') ctx.logger?.warn?.(error)
     }
-
+    // A scanned PDF has no text layer, but its pages still render in the
+    // browser; without any page geometry there is nothing to show.
     if (documentPages.length === 0) {
-      const size = /^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/.exec(parsed.size)
-      const width = size === null ? 612 : Number(size[1])
-      const height = size === null ? 792 : Number(size[2])
-      documentPages = Array.from({ length: parsed.pages }, () => ({
-        width: Number.isFinite(width) && width > 0 ? width : 612,
-        height: Number.isFinite(height) && height > 0 ? height : 792,
-        words: [],
-        text: '',
-      }))
-    }
-    // pdfinfo is authoritative for the page count; empty trailing pages can be
-    // omitted by pdftotext for image-only documents.
-    while (documentPages.length < parsed.pages) {
-      const last = documentPages[documentPages.length - 1]
-      documentPages.push({ width: last?.width ?? 612, height: last?.height ?? 792, words: [], text: '' })
+      throw httpError(422, 'this PDF has no readable pages', 'no-readable-pages')
     }
 
     const metaValue = {
       id,
       name,
-      title: parsed.title || name,
-      pages: parsed.pages,
+      title: name,
+      pages: documentPages.length,
       openedAt: Date.now(),
     }
     const index = documentPages.map((page) => ({
@@ -1545,154 +1459,15 @@ export function apply(ctx) {
 
   void pruneTemp().catch(() => {})
 
-  const renderSlot = createLimiter(RENDER_CONCURRENCY)
 
-  async function renderPage(id, pageNumber, dpi = PAGE_DPI) {
-    const resolution = clampDpi(dpi)
-    const key = `${id}:${pageNumber}:${resolution}`
-    const cached = imageCache.get(key)
-    if (cached !== undefined) return cached
-    const pending = renders.get(key)
-    if (pending !== undefined) return pending
-    const work = (async () => {
-      await dirsReady
-      const target = paths(id)
-      const prefix = join(target.pageDir, String(pageNumber))
-      const file = `${prefix}@${resolution}.png`
-      // Pages rendered before resolution handling live at `<page>.png`.
-      const candidates = resolution === PAGE_DPI ? [file, `${prefix}.png`] : [file]
-      for (const candidate of candidates) {
-        try {
-          const present = await stat(candidate)
-          if (present.size > 0) {
-            const bytes = await readFile(candidate)
-            rememberImage(key, bytes)
-            return bytes
-          }
-        } catch {
-          // Try the next candidate, then render below.
-        }
-      }
-      await mkdir(target.pageDir, { recursive: true })
-      const temporary = join(temp, `page-${id}-${pageNumber}-${randomUUID()}`)
-      await renderSlot(() => runTool('pdftoppm', [
-        '-png',
-        '-r',
-        String(resolution),
-        '-f',
-        String(pageNumber),
-        '-l',
-        String(pageNumber),
-        '-singlefile',
-        target.pdf,
-        temporary,
-      ], { timeout: 120_000, maxBuffer: 4 * 1024 * 1024 }))
-      await rename(`${temporary}.png`, file)
-      const bytes = await readFile(file)
-      rememberImage(key, bytes)
-      return bytes
-    })()
-    renders.set(key, work)
-    try {
-      return await work
-    } finally {
-      renders.delete(key)
-    }
-  }
 
-  function rememberImage(key, bytes) {
-    while (imageCache.size >= IMAGE_CACHE_LIMIT) {
-      const oldest = imageCache.keys().next().value
-      imageCacheBytes -= imageCache.get(oldest)?.length ?? 0
-      imageCache.delete(oldest)
-    }
-    while (imageCacheBytes + bytes.length > IMAGE_CACHE_BYTES && imageCache.size > 0) {
-      const oldest = imageCache.keys().next().value
-      imageCacheBytes -= imageCache.get(oldest)?.length ?? 0
-      imageCache.delete(oldest)
-    }
-    imageCache.set(key, bytes)
-    imageCacheBytes += bytes.length
-  }
-
-  async function ensureOutlineScript() {
-    if (outlineScriptReady !== undefined) return outlineScriptReady
-    outlineScriptReady = (async () => {
-      await dirsReady
-      await writeFile(join(texts, 'outline.jxa'), OUTLINE_SCRIPT, 'utf8')
-    })()
-    return outlineScriptReady
-  }
 
   /**
    * Read PDF bookmarks with PDFKit. Only macOS ships the JavaScript bridge
    * and PDFKit, so elsewhere this returns an empty list rather than failing
    * the document open.
    */
-  async function extractOutline(id) {
-    await ensureOutlineScript()
-    let result
-    try {
-      result = await runTool('osascript', [
-        '-l', 'JavaScript',
-        join(texts, 'outline.jxa'),
-        paths(id).pdf,
-      ], { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 })
-    } catch (error) {
-      if (error?.code === 'ENOENT') return { outline: [], code: 'outline-macos-only' }
-      throw error
-    }
-    let parsed = null
-    try {
-      parsed = JSON.parse(result.stdout.trim())
-    } catch {
-      return { outline: [], code: 'outline-invalid' }
-    }
-    if (!Array.isArray(parsed?.outline)) return { outline: [], code: 'outline-invalid' }
-    // The script reports a page it cannot open as an empty outline plus an
-    // error string; keep that apart from a document that simply has no outline.
-    if (typeof parsed?.error === 'string' && parsed.error !== '') {
-      return { outline: [], code: 'outline-failed' }
-    }
-    const outline = []
-    for (const raw of parsed.outline) {
-      if (raw === null || typeof raw !== 'object') continue
-      const title = typeof raw.title === 'string' ? raw.title.replace(/\s+/g, ' ').trim().slice(0, 300) : ''
-      if (title === '') continue
-      const page = Number.isInteger(raw.page) && raw.page > 0 ? Math.min(raw.page, 1_000_000) : 0
-      const depth = Number.isInteger(raw.depth) ? Math.max(0, Math.min(raw.depth, 12)) : 0
-      outline.push({ title, page, depth })
-      if (outline.length >= 5000) break
-    }
-    return { outline, code: undefined }
-  }
 
-  async function loadOutline(id) {
-    const hit = outlineCache.get(id)
-    if (hit !== undefined) return hit
-    await dirsReady
-    try {
-      const rows = JSON.parse(await readFile(paths(id).outline, 'utf8'))
-      const value = { outline: Array.isArray(rows) ? rows : [] }
-      if (outlineCache.size >= 8) outlineCache.delete(outlineCache.keys().next().value)
-      outlineCache.set(id, value)
-      return value
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error
-    }
-    let value
-    try {
-      value = await extractOutline(id)
-    } catch (error) {
-      ctx.logger?.warn?.(error)
-      return { outline: [], error: error instanceof Error ? error.message : 'outline extraction failed' }
-    }
-    if (value.error !== undefined) return value
-    await writeFile(paths(id).outline, JSON.stringify(value.outline), 'utf8')
-    if (outlineCache.size >= 8) outlineCache.delete(outlineCache.keys().next().value)
-    outlineCache.set(id, value)
-    return value
-  }
 
   async function searchDocument(id, query) {
     const documentPages = await loadText(id)
@@ -1772,20 +1547,13 @@ export function apply(ctx) {
     await rm(target.text, { force: true })
     await rm(target.meta, { force: true })
     await rm(target.outline, { force: true })
-    await rm(target.pageDir, { recursive: true, force: true })
     await rm(target.wordsDir, { recursive: true, force: true })
     await rm(notesPath(id), { force: true })
     textCache.delete(id)
     metaCache.delete(id)
-    outlineCache.delete(id)
     notesCache.delete(id)
     for (const key of [...wordsCache.keys()]) {
       if (key.startsWith(`${id}:`)) wordsCache.delete(key)
-    }
-    for (const key of [...imageCache.keys()]) {
-      if (!key.startsWith(`${id}:`)) continue
-      imageCacheBytes -= imageCache.get(key)?.length ?? 0
-      imageCache.delete(key)
     }
     await loadPositions()
     if (positions.delete(id)) await queuePositionWrite()
@@ -2070,18 +1838,77 @@ export function apply(ctx) {
         }, headOnly)
         return
       }
-      const pageMatch = new RegExp(`^${ROUTE}/page/([a-f0-9]{24})/(\\d{1,6})$`).exec(path)
-      if (pageMatch !== null) {
-        const id = pageMatch[1]
-        const number = Number(pageMatch[2])
+      const fileMatch = new RegExp(`^${ROUTE}/file/([a-f0-9]{24})$`).exec(path)
+      if (fileMatch !== null) {
+        const id = fileMatch[1]
+        const target = paths(id).pdf
+        let size = 0
         try {
-          const meta = await loadMeta(id)
-          if (number < 1 || number > meta.pages) throw httpError(404, 'page not found', 'page-not-found')
-        } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
-          throw error
+          size = (await stat(target)).size
+        } catch {
+          throw httpError(404, 'document not found', 'document-not-found')
         }
-        sendPng(res, await renderPage(id, number, clampDpi(url.searchParams.get('dpi'))), headOnly)
+        const rangeHeader = typeof req.headers.range === 'string'
+          ? /^bytes=(\d*)-(\d*)$/.exec(req.headers.range.trim())
+          : null
+        let start = 0
+        let end = Math.max(0, size - 1)
+        let partial = false
+        if (rangeHeader !== null && (rangeHeader[1] !== '' || rangeHeader[2] !== '')) {
+          if (rangeHeader[1] === '') {
+            start = Math.max(0, size - Number(rangeHeader[2]))
+          } else {
+            start = Number(rangeHeader[1])
+            end = rangeHeader[2] === '' ? size - 1 : Math.min(size - 1, Number(rangeHeader[2]))
+          }
+          if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= size) {
+            res.writeHead(416, { 'content-range': `bytes */${size}` })
+            res.end()
+            return
+          }
+          partial = true
+        }
+        const length = size === 0 ? 0 : end - start + 1
+        res.writeHead(partial ? 206 : 200, {
+          'content-type': 'application/pdf',
+          'content-length': length,
+          'accept-ranges': 'bytes',
+          'cache-control': 'private, max-age=3600',
+          'x-content-type-options': 'nosniff',
+          ...(partial ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
+        })
+        if (headOnly || size === 0) {
+          res.end()
+          return
+        }
+        createReadStream(target, { start, end }).pipe(res)
+        return
+      }
+      const assetMatch = new RegExp(`^${ROUTE}/pdfjs/(.+)$`).exec(path)
+      if (assetMatch !== null) {
+        if (pdfjsRoot === '') throw httpError(404, 'the PDF engine is not installed', 'pdfjs-missing')
+        const relative = assetMatch[1]
+        const base = resolve(pdfjsRoot)
+        const file = resolve(base, relative)
+        if (!file.startsWith(base + sep) || relative.includes('..')) {
+          throw httpError(400, 'invalid asset path', 'invalid-asset')
+        }
+        let body
+        try {
+          body = await readFile(file)
+        } catch {
+          throw httpError(404, 'not found', 'not-found')
+        }
+        const type = file.endsWith('.mjs') || file.endsWith('.js')
+          ? 'text/javascript; charset=utf-8'
+          : file.endsWith('.ttf') ? 'font/ttf' : 'application/octet-stream'
+        res.writeHead(200, {
+          'content-type': type,
+          'content-length': body.length,
+          'cache-control': 'private, max-age=3600',
+          'x-content-type-options': 'nosniff',
+        })
+        res.end(headOnly ? undefined : body)
         return
       }
       if (path === `${ROUTE}/documents`) {
@@ -2111,18 +1938,6 @@ export function apply(ctx) {
         }
         await loadPositions()
         sendJson(res, 200, { position: positions.get(id) ?? null }, headOnly)
-        return
-      }
-      const outlineMatch = new RegExp(`^${ROUTE}/outline/([a-f0-9]{24})$`).exec(path)
-      if (outlineMatch !== null) {
-        const id = outlineMatch[1]
-        try {
-          await loadMeta(id)
-        } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
-          throw error
-        }
-        sendJson(res, 200, await loadOutline(id), headOnly)
         return
       }
       const searchMatch = new RegExp(`^${ROUTE}/search/([a-f0-9]{24})$`).exec(path)

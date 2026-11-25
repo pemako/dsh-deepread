@@ -10,17 +10,17 @@ Plugins → Add plugin 里填：
 @pemako/dsh-deepread
 ```
 
-想固定版本就在名字后面加 `@版本号`。装好以后侧栏会多一个「深读」。PDF 是本机 Poppler（`pdfinfo`、`pdftotext`、`pdftoppm`）解析的，用之前先把它装好。
+想固定版本就在名字后面加 `@版本号`。装好以后侧栏会多一个「深读」。PDF 页面由随插件安装的 pdfjs 在浏览器里绘制，文字层来自本机的 `pdftotext`，用之前先把 Poppler 装好。
 
 ## 依赖
 
-读 PDF 需要本机装有 Poppler 的 `pdfinfo`、`pdftotext`、`pdftoppm`：macOS 用 `brew install poppler`，Debian/Ubuntu 用 `apt install poppler-utils`，Windows 用 `scoop install poppler`。桌面端启动时可能看不到 Homebrew 的安装路径，所以插件会先查常见目录、再退回 `PATH`；也可以用 `DEEPREAD_POPPLER_DIR` 指定目录。Poppler 是系统程序而不是 npm 包，没法作为依赖自动装上。
+读 PDF 的文字需要本机装有 Poppler 的 `pdftotext`：macOS 用 `brew install poppler`，Debian/Ubuntu 用 `apt install poppler-utils`，Windows 用 `scoop install poppler`。桌面端启动时可能看不到 Homebrew 的安装路径，所以插件会先查常见目录、再退回 `PATH`；也可以用 `DEEPREAD_POPPLER_DIR` 指定目录。Poppler 是系统程序而不是 npm 包，没法作为依赖自动装上。
 
-书签目录走系统的 PDFKit（通过 `osascript`），这一项只在 macOS 上可用；其它平台面板里会说明，其余功能照常。
+页面由随插件安装的 `pdfjs-dist` 在浏览器里绘制，书签目录也来自它，所以没有 macOS-only 的部分。
 
 ## 上手
 
-点侧栏的「深读」（在 Plugins、Schedules 后面）。读 PDF 就点「选择 PDF」选一个本地文件，文件会传到 Host，由 Poppler 转成页面图片和带坐标的文字层。读网页直接在地址栏敲地址，裸域名按 https，`localhost:3000` 这种按 http；旁边的前进、后退、刷新和「用系统浏览器打开」都作用在当前这一页上。
+点侧栏的「深读」（在 Plugins、Schedules 后面）。读 PDF 就点「选择 PDF」选一个本地文件，文件会传到 Host，由 `pdftotext` 取成带坐标的文字层；页面本身由浏览器里的 pdfjs 绘制。读网页直接在地址栏敲地址，裸域名按 https，`localhost:3000` 这种按 http；旁边的前进、后退、刷新和「用系统浏览器打开」都作用在当前这一页上。
 
 中间的分隔条可以拖，左右比例随你；窗口窄的时候两边会改成上下堆。
 
@@ -28,7 +28,7 @@ Plugins → Add plugin 里填：
 
 选中的内容也可以留下来。挑个颜色点「高亮」，这段文字就会在页面上留着标记，每条高亮还能写笔记。点工具栏的高亮图标会按页列出它们，可以跳过去、改颜色、写或改笔记、删掉。数据存在 Host 上跟文档放在一起，重启和换电脑都还在。
 
-工具栏左边是阅读控件（页码、缩放、查找），右边是动作图标：目录、高亮、文档、右栏布局、会话选择和打开对话。查找会把命中的页列成一张单子，每行带一小段原文，点一下就跳过去；打字的过程中页面不会再自己乱跳。放大时页面会按更高的分辨率重新渲染，字不会糊。目录图标把 PDF 书签展开成一棵树，能过滤、能点章节跳转，当前页会标出来。图标把鼠标放上去会显示名字；窗口不够宽时，放不下的部分会收进最右边的「更多」菜单。
+工具栏左边是阅读控件（页码、缩放、查找），右边是动作图标：目录、高亮、文档、右栏布局、会话选择和打开对话。查找会把命中的页列成一张单子，每行带一小段原文，点一下就跳过去；打字的过程中页面不会再自己乱跳。放大时页面按新的尺寸重画，是矢量级的清晰，不是把图片放大糊掉。目录图标把 PDF 书签展开成一棵树，能过滤、能点章节跳转，当前页会标出来。图标把鼠标放上去会显示名字；窗口不够宽时，放不下的部分会收进最右边的「更多」菜单。
 
 工具栏的文档图标会列出已经存下的文档，最近打开的排在前面，可以直接切换，也可以连同它的高亮一起删掉。
 
@@ -62,17 +62,19 @@ Plugins → Add plugin 里填：
 
 ## 代码结构
 
-`index.js` 是 Host 半部：PDF 上传和存储、Poppler 解析、页面图片缓存、文档搜索、`ctx.web.search` 代理、PDFKit 书签读取（`osascript` 加 `text/outline.jxa`）、网页代理和选区桥、用系统浏览器打开，以及把选段投递给 `ctx.agents.get(sessionId).followup()`。
+`index.js` 是 Host 半部：PDF 上传和存储、`pdftotext` 取词、带字节范围的 PDF 文件路由、提供随包安装的 pdfjs 引擎、文档搜索、`ctx.web.search` 代理、网页代理和选区桥、用系统浏览器打开，以及把选段投递给 `ctx.agents.get(sessionId).followup()`。
 
-`client.js` 是浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖的左右/上下分栏、PDF 图片和文字层、目录树、复制/搜索/提问、PDF 和网页的来源切换、网页工具栏和桥消息、右栏整块收起（`dsh.deepread.readeronly`），还有通过 `conversation.content` Factory 渲染的真实会话。终端用内置终端包的 `TerminalBody` 和 xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，contentId 由 `dsh.deepread.termgen.<sessionId>` 里的 generation 决定。插件不调 `ctx.sidebarRight` 的方法，所以不会去开会话右侧栏。终端帧的订阅放在终端内容组件里，外层不会每一帧都重渲染；PDF 页面用 `content-visibility: auto` 跳过屏幕外的绘制。侧栏图标的 pointerdown 只用 `mainView` 保留当前会话，不再预建 terminal tab。
+`client.js` 是浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖的左右/上下分栏、pdfjs 画布和 pdftotext 文字层、目录树、复制/搜索/提问、PDF 和网页的来源切换、网页工具栏和桥消息、右栏整块收起（`dsh.deepread.readeronly`），还有通过 `conversation.content` Factory 渲染的真实会话。终端用内置终端包的 `TerminalBody` 和 xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，contentId 由 `dsh.deepread.termgen.<sessionId>` 里的 generation 决定。插件不调 `ctx.sidebarRight` 的方法，所以不会去开会话右侧栏。终端帧的订阅放在终端内容组件里，外层不会每一帧都重渲染；PDF 页面用 `content-visibility: auto` 跳过屏幕外的绘制。侧栏图标的 pointerdown 只用 `mainView` 保留当前会话，不再预建 terminal tab。
 
-状态目录是 `$DSH_HOME/deepread/`，里面有 `docs/`、`text/`、`pages/`、`notes/`、`tmp/`。每份文档的页索引在 `text/<id>.json`，词框按页放在 `text/<id>.words/` 里；书籍目录缓存在 `text/<id>.outline.json`，脚本在 `text/outline.jxa`，高亮和笔记在 `notes/<id>.json`，阅读位置在 `positions.json`。
+状态目录是 `$DSH_HOME/deepread/`，里面有 `docs/`、`text/`、`notes/`、`tmp/`。每份文档的页索引在 `text/<id>.json`，词框按页放在 `text/<id>.words/` 里；高亮和笔记在 `notes/<id>.json`，阅读位置在 `positions.json`。页面位图不再落盘，浏览器直接从 PDF 绘制。
 
 ## 限制
 
-本机得有 Poppler，没有的话打开 PDF 会返回一个写清楚的 501。
+本机得有 Poppler 的 `pdftotext`，没有的话打开 PDF 会返回带安装命令的 501。
 
 加密或者要密码的 PDF 不支持。
+
+页面带 `/Rotate` 旋转时，文字层可能和画出来的页面错位。
 
 扫描版 PDF 没有文字层，页面能看，但选中、复制和文档内查找用不了。
 

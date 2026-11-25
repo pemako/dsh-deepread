@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { parseBbox, rewriteHtml, normalizeTarget, plainLine, isBlockedIp, clampDpi, createLimiter } from '../index.js'
+import { parseBbox, rewriteHtml, normalizeTarget, plainLine, isBlockedIp, createLimiter } from '../index.js'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 
@@ -90,12 +90,6 @@ test('isBlockedIp separates public from internal ranges', () => {
   }
 })
 
-test('clampDpi keeps renders inside the supported range', () => {
-  assert.equal(clampDpi(null), 130)
-  assert.equal(clampDpi(60), 96)
-  assert.equal(clampDpi(999), 300)
-  assert.equal(clampDpi(137), 140)
-})
 
 test('the manifest, locales and detail documents agree', async () => {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
