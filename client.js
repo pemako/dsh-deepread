@@ -434,6 +434,13 @@ window.__ModuleLoader__.load({
       ])
     }
 
+    function StackIcon({ size = 16 }) {
+      return h(Icon, { size }, [
+        h('path', { key: 'a', d: 'M6.2 3.8h8.1L17.8 7v9.2H6.2V3.8Z', stroke: 'currentColor', strokeWidth: 1.3, strokeLinejoin: 'round' }),
+        h('path', { key: 'b', d: 'M3.4 6.6v9.6h9', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+      ])
+    }
+
     function MarkerIcon({ size = 16 }) {
       return h(Icon, { size }, [
         h('path', { key: 'a', d: 'M4.6 15.4 6 9.9l5.5-5.5a1.5 1.5 0 0 1 2.1 0l2 2a1.5 1.5 0 0 1 0 2.1L10.1 14l-5.5 1.4Z', stroke: 'currentColor', strokeWidth: 1.3, strokeLinejoin: 'round' }),
@@ -632,6 +639,11 @@ window.__ModuleLoader__.load({
 .dr-root{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.45}
 .dr-topbar{display:flex;align-items:center;gap:8px;flex:none;min-height:46px;padding:8px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);flex-wrap:wrap;background:var(--dsw-alias-bg-layer-1)}
 .dr-head-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto;min-width:0}
+.dr-icon-btn{position:relative}
+.dr-count-badge{position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 0 0 1px var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);font-size:9px;line-height:12px;text-align:center;font-variant-numeric:tabular-nums;pointer-events:none}
+.dr-icon-spinner{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-width:1.2px}
+.dr-tip::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);right:0;z-index:70;padding:4px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:11px;line-height:1.4;white-space:nowrap;opacity:0;transform:translateY(-2px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;box-shadow:0 8px 20px rgba(0,0,0,.18)}
+.dr-tip:hover::after,.dr-tip:focus-visible::after{opacity:1;transform:none}
 .dr-brand{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:13px;font-weight:600;letter-spacing:.01em}
 .dr-brand svg{color:var(--dsw-alias-brand-primary)}
 .dr-doc-name{min-width:0;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-secondary)}
@@ -2857,8 +2869,10 @@ window.__ModuleLoader__.load({
             source === 'pdf' && doc !== null && h('button', {
               key: 'toc',
               type: 'button',
-              className: 'dr-btn',
-              title: tx('toc.title'),
+              className: 'dr-btn dr-icon dr-icon-btn dr-tip',
+              'data-tip': outline.state === 'ready' && outline.rows.length > 0
+                ? `${tx('toc.title')} · ${outline.rows.length}`
+                : tx('toc.title'),
               'aria-label': tx('toc.title'),
               'aria-expanded': tocOpen,
               onClick: () => setTocOpen((value) => {
@@ -2874,15 +2888,14 @@ window.__ModuleLoader__.load({
                 : undefined,
             }, [
               h(TocIcon, { key: 'i' }),
-              tx('toc.open'),
-              outline.state === 'loading' && h('span', { key: 's', className: 'dr-spinner' }),
-              outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(outline.rows.length)),
+              outline.state === 'loading' && h('span', { key: 's', className: 'dr-icon-spinner' }),
+              outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-count-badge' }, String(outline.rows.length)),
             ]),
             source === 'pdf' && doc !== null && h('button', {
               key: 'notes',
               type: 'button',
-              className: 'dr-btn',
-              title: tx('notes.open'),
+              className: 'dr-btn dr-icon dr-icon-btn dr-tip',
+              'data-tip': marks.length > 0 ? `${tx('notes.open')} · ${marks.length}` : tx('notes.open'),
               'aria-label': tx('notes.open'),
               'aria-expanded': notesOpen,
               onClick: () => setNotesOpen((value) => {
@@ -2898,14 +2911,13 @@ window.__ModuleLoader__.load({
                 : undefined,
             }, [
               h(MarkerIcon, { key: 'i' }),
-              tx('notes.open'),
-              marks.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(marks.length)),
+              marks.length > 0 && h('span', { key: 'n', className: 'dr-count-badge' }, String(marks.length)),
             ]),
             h('button', {
               key: 'docs',
               type: 'button',
-              className: 'dr-btn',
-              title: tx('docs.open'),
+              className: 'dr-btn dr-icon dr-icon-btn dr-tip',
+              'data-tip': tx('docs.open'),
               'aria-label': tx('docs.open'),
               'aria-expanded': docsOpen,
               onClick: () => {
@@ -2921,26 +2933,15 @@ window.__ModuleLoader__.load({
               style: docsOpen
                 ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
                 : undefined,
-            }, [h(BookIcon, { key: 'i' }), tx('docs.open')]),
-            hasSession && h('button', {
-              key: 'panel',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('chat.open'),
-              'aria-label': tx('chat.open'),
-              onClick: () => selectConversation(),
-            }, h(PageIcon, {})),
-            hasContent && h('button', {
+            }, [h(StackIcon, { key: 'i' })]),
+            collapsed && h('button', {
               key: 'reader',
               type: 'button',
-              className: 'dr-btn',
-              title: collapsed ? tx('side.expand') : tx('side.collapse'),
-              'aria-label': collapsed ? tx('side.expand') : tx('side.collapse'),
-              onClick: () => setCollapsed(!collapsed),
-            }, [
-              h(ChevronIcon, { key: 'i', direction: collapsed ? 'left' : 'right' }),
-              collapsed ? tx('side.expand') : tx('side.collapse'),
-            ]),
+              className: 'dr-btn dr-icon dr-icon-btn dr-tip',
+              'data-tip': tx('side.expand'),
+              'aria-label': tx('side.expand'),
+              onClick: () => setCollapsed(false),
+            }, h(ChevronIcon, { key: 'i', direction: 'left' })),
           ]),
         ]),
 
