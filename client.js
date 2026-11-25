@@ -662,13 +662,14 @@ window.__ModuleLoader__.load({
 .dr-more-row:hover{background:var(--dsw-alias-bg-layer-2)}
 .dr-more-text{flex:1 1 auto;min-width:0}
 .dr-more-count{flex:none;font-size:10px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+.dr-more-check{flex:none;font-size:11px;color:var(--dsw-alias-brand-primary)}
 .dr-more-block{display:flex;flex-direction:column;gap:5px;padding:5px 8px}
 .dr-more-label{font-size:10px;color:var(--dsw-alias-label-secondary)}
 .dr-more .dr-mode-switch{width:100%}
 .dr-more .dr-mode-btn{flex:1 1 0;height:24px}
-.dr-more-select{width:100%;max-width:100%}
+.dr-more-select{flex:none;height:26px;width:100%;max-width:100%}
 .dr-more-sep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1)}
-.dr-address-input{flex:0 1 260px;width:260px;min-width:120px}
+.dr-address-input{flex:1 1 180px;width:260px;max-width:260px;min-width:120px}
 .dr-brand{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:13px;font-weight:600;letter-spacing:.01em}
 .dr-brand svg{color:var(--dsw-alias-brand-primary)}
 .dr-doc-meta{flex:none;font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -1407,6 +1408,7 @@ window.__ModuleLoader__.load({
       const [moreOpen, setMoreOpen] = React.useState(false)
       const compactBar = barWidth > 0 && barWidth < 1460
       const tightBar = barWidth > 0 && barWidth < 1200
+      const webTight = barWidth > 0 && barWidth < 1400
       const [trafficInset, setTrafficInset] = React.useState(0)
       React.useEffect(() => {
         const element = rootRef.current
@@ -2718,7 +2720,7 @@ window.__ModuleLoader__.load({
                 disabled: webUrl === '',
                 onClick: reloadWeb,
               }, h(ReloadIcon, {})),
-              h('div', {
+              !webTight && h('div', {
                 key: 'mode',
                 className: 'dr-mode-switch',
                 role: 'group',
@@ -2743,7 +2745,7 @@ window.__ModuleLoader__.load({
                   onClick: () => setWebMode('direct'),
                 }, tx('page.original')),
               ]),
-              h('button', {
+              !webTight && h('button', {
                 key: 'external',
                 type: 'button',
                 className: 'dr-btn dr-icon',
@@ -3073,6 +3075,51 @@ window.__ModuleLoader__.load({
                   : undefined,
               }, h(MoreIcon, {})),
               moreOpen && h('div', { key: 'more-menu', className: 'dr-more', role: 'menu' }, [
+                source === 'web' && webTight && h('button', {
+                  key: 'web-read',
+                  type: 'button',
+                  role: 'menuitemradio',
+                  'aria-checked': webMode === 'read',
+                  className: 'dr-more-row',
+                  onClick: () => {
+                    setWebMode('read')
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(BookIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('page.reader')),
+                  webMode === 'read' && h('span', { key: 'c', className: 'dr-more-check' }, '✓'),
+                ]),
+                source === 'web' && webTight && h('button', {
+                  key: 'web-direct',
+                  type: 'button',
+                  role: 'menuitemradio',
+                  'aria-checked': webMode === 'direct',
+                  className: 'dr-more-row',
+                  onClick: () => {
+                    setWebMode('direct')
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(GlobeIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('page.original')),
+                  webMode === 'direct' && h('span', { key: 'c', className: 'dr-more-check' }, '✓'),
+                ]),
+                source === 'web' && webTight && h('button', {
+                  key: 'web-external',
+                  type: 'button',
+                  role: 'menuitem',
+                  className: 'dr-more-row',
+                  disabled: webUrl === '',
+                  onClick: () => {
+                    void openWebExternal(webUrl)
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(ExternalIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('page.external')),
+                ]),
+                source === 'web' && webTight && h('div', { key: 'sep-web', className: 'dr-more-sep' }),
                 tightBar && h('button', {
                   key: 'toc',
                   type: 'button',
