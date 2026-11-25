@@ -22,7 +22,7 @@ Select text in either mode and the same bar appears at the bottom. Copy rebuilds
 
 Selections can also be kept. Pick a highlight colour, and the passage stays marked on the page; each highlight takes a note. The highlights button lists them by page, jumps to one, changes its colour or note, and removes it. They live next to the document on the Host, so they are still there after a restart and after switching computers.
 
-The toolbar jumps to a page, changes zoom, and finds text in the document. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom re-renders pages at a higher resolution, so text stays sharp when magnified. The contents button shows the PDF bookmarks as a tree you can filter and click through, with the current page marked; the toolbar's icon buttons name themselves on hover.
+The toolbar keeps the reading controls on the left (page, zoom, find) and the actions on the right as icons: contents, highlights, documents, the right-pane layout, the session picker and the conversation entry. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom re-renders pages at a higher resolution, so text stays sharp when magnified. The contents icon opens the PDF bookmarks as a tree you can filter and click through, with the current page marked. Icons name themselves on hover, and when the window is too narrow for everything a More menu holds whatever no longer fits.
 
 The documents button keeps what the reader has stored, newest first. Open another one from that list, or remove one together with its highlights.
 
@@ -30,9 +30,9 @@ Page mode has its own zoom as well: the −/percentage/+ control, or ⌘/Ctrl wi
 
 ## The right side
 
-The right pane starts as a vertical split with the conversation on top and a terminal underneath, running in the session workspace and sizing itself to the pane. The three-way switch at the top picks split, conversation only, or terminal only. Leaving the terminal detaches its view but keeps the process, and coming back reattaches the same one.
+The right pane starts as a vertical split with the conversation on top and a terminal underneath, running in the session workspace and sizing itself to the pane. The three-way switch in the top bar picks split, conversation only, or terminal only. Leaving the terminal detaches its view but keeps the process, and coming back reattaches the same one.
 
-The collapse button, also in the pane header, hides the whole right side so the reading area takes over the panel. The terminal keeps running while it's hidden, and the panel mentions that once. Expanding brings back the split and ratio you had. With no PDF open the button isn't there, since there's nothing to widen. Asking AI with a selection expands the pane and switches to the conversation even from terminal-only mode, without touching the collapsed preference you saved.
+The collapse button at the end of the top bar hides the whole right side so the reading area takes over the panel. The terminal keeps running while it's hidden, and the panel mentions that once. Expanding brings back the split and ratio you had. With no PDF open the button isn't there, since there's nothing to widen. Asking AI with a selection expands the pane and switches to the conversation even from terminal-only mode, without touching the collapsed preference you saved.
 
 The terminal belongs to DeepRead. It's created through `ctx.get('webTerminals').view(sessionId, contentId, contentId)` with a contentId like `deepread-terminal-<generation>`, where the generation is kept per session in localStorage. It doesn't add a tab to the session's own right sidebar, so switching sessions never opens that sidebar or drops a terminal into it. Fonts and theme follow DSH. While the panel is mounted the view holds the terminal; after leaving and coming back, the same contentId reattaches to the Host process if it's still alive. Otherwise you get "unavailable" and a New terminal button, which starts a new generation after closing the old one.
 
@@ -60,7 +60,7 @@ Links and GET search forms go back to the panel, which proxies them again, so th
 
 `client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, PDF images and the text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
 
-State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, and `tmp/`, with book outlines cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, and positions in `positions.json`.
+State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, `notes/`, and `tmp/`, with book outlines cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
 
 ## Limits
 
