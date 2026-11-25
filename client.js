@@ -2831,7 +2831,14 @@ window.__ModuleLoader__.load({
             title: tx('toc.title'),
             'aria-label': tx('toc.title'),
             'aria-expanded': tocOpen,
-            onClick: () => setTocOpen((value) => !value),
+            onClick: () => setTocOpen((value) => {
+              const next = !value
+              if (next) {
+                setNotesOpen(false)
+                setDocsOpen(false)
+              }
+              return next
+            }),
             style: tocOpen
               ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
               : undefined,
@@ -2848,7 +2855,14 @@ window.__ModuleLoader__.load({
             title: tx('notes.open'),
             'aria-label': tx('notes.open'),
             'aria-expanded': notesOpen,
-            onClick: () => setNotesOpen((value) => !value),
+            onClick: () => setNotesOpen((value) => {
+              const next = !value
+              if (next) {
+                setTocOpen(false)
+                setDocsOpen(false)
+              }
+              return next
+            }),
             style: notesOpen
               ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
               : undefined,
@@ -2866,7 +2880,11 @@ window.__ModuleLoader__.load({
             'aria-expanded': docsOpen,
             onClick: () => {
               setDocsOpen((value) => {
-                if (!value) void refreshDocuments()
+                if (!value) {
+                  void refreshDocuments()
+                  setTocOpen(false)
+                  setNotesOpen(false)
+                }
                 return !value
               })
             },
