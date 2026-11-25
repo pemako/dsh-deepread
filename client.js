@@ -631,6 +631,7 @@ window.__ModuleLoader__.load({
     const CSS = `
 .dr-root{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.45}
 .dr-topbar{display:flex;align-items:center;gap:8px;flex:none;min-height:46px;padding:8px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);flex-wrap:wrap;background:var(--dsw-alias-bg-layer-1)}
+.dr-head-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-left:auto;min-width:0}
 .dr-brand{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:13px;font-weight:600;letter-spacing:.01em}
 .dr-brand svg{color:var(--dsw-alias-brand-primary)}
 .dr-doc-name{min-width:0;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-secondary)}
@@ -1360,6 +1361,28 @@ window.__ModuleLoader__.load({
         const timer = window.setTimeout(() => setImageDpi(wanted), 350)
         return () => window.clearTimeout(timer)
       }, [zoom])
+
+      // The desktop window draws its traffic lights over the top-left corner.
+      // When this panel sits at the window edge, the first row has to start
+      // clear of them or a click on our own controls can hit the close button.
+      const [trafficInset, setTrafficInset] = React.useState(0)
+      React.useEffect(() => {
+        const element = rootRef.current
+        if (element === null) return undefined
+        function measure() {
+          const rect = element.getBoundingClientRect()
+          const overlap = rect.top < 30 ? Math.max(0, 84 - rect.left) : 0
+          setTrafficInset(Math.ceil(overlap))
+        }
+        measure()
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+        if (observer !== null) observer.observe(element)
+        window.addEventListener('resize', measure)
+        return () => {
+          if (observer !== null) observer.disconnect()
+          window.removeEventListener('resize', measure)
+        }
+      }, [])
       const [split, setSplit] = React.useState(() => {
         const saved = Number(safeGet('dsh.deepread.split'))
         return Number.isFinite(saved) && saved >= 30 && saved <= 78 ? saved : 54
@@ -2503,7 +2526,11 @@ window.__ModuleLoader__.load({
       }, [
         h(StyleTag, { key: 'style' }),
         h('div', { key: 'topbar', className: 'dr-topbar' }, [
-          h('div', { key: 'brand', className: 'dr-brand' }, [h(BookIcon, { key: 'i', size: 16 }), tx('panel.label')]),
+          h('div', {
+            key: 'brand',
+            className: 'dr-brand',
+            style: trafficInset === 0 ? undefined : { marginLeft: trafficInset },
+          }, [h(BookIcon, { key: 'i', size: 16 }), tx('panel.label')]),
           h('div', {
             key: 'source',
             className: 'dr-mode-switch dr-source-switch',
@@ -2580,339 +2607,340 @@ window.__ModuleLoader__.load({
               'aria-label': tx('page.go'),
             }, h(GlobeIcon, {})),
           ]),
-          h('span', { key: 'space', className: 'dr-spacer' }),
-          source === 'web' && h('div', { key: 'webnav', className: 'dr-group' }, [
-            h('button', {
-              key: 'back',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('page.back'),
-              'aria-label': tx('page.back'),
-              disabled: webNav.index <= 0,
-              onClick: webBack,
-            }, h(ChevronIcon, { direction: 'left' })),
-            h('button', {
-              key: 'forward',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('page.forward'),
-              'aria-label': tx('page.forward'),
-              disabled: webNav.index >= webNav.entries.length - 1,
-              onClick: webForward,
-            }, h(ChevronIcon, { direction: 'right' })),
-            h('button', {
-              key: 'reload',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('page.reload'),
-              'aria-label': tx('page.reload'),
-              disabled: webUrl === '',
-              onClick: reloadWeb,
-            }, h(ReloadIcon, {})),
-            h('div', {
-              key: 'mode',
-              className: 'dr-mode-switch',
-              role: 'group',
-              'aria-label': tx('source.label'),
-            }, [
+          h('div', { key: 'actions', className: 'dr-head-actions' }, [
+            source === 'web' && h('div', { key: 'webnav', className: 'dr-group' }, [
               h('button', {
-                key: 'read',
+                key: 'back',
                 type: 'button',
-                className: 'dr-mode-btn',
-                'data-on': webMode === 'read' ? '1' : '0',
-                'aria-pressed': webMode === 'read',
-                title: tx('page.readerHint'),
-                onClick: () => setWebMode('read'),
-              }, tx('page.reader')),
+                className: 'dr-btn dr-icon',
+                title: tx('page.back'),
+                'aria-label': tx('page.back'),
+                disabled: webNav.index <= 0,
+                onClick: webBack,
+              }, h(ChevronIcon, { direction: 'left' })),
               h('button', {
-                key: 'direct',
+                key: 'forward',
                 type: 'button',
-                className: 'dr-mode-btn',
-                'data-on': webMode === 'direct' ? '1' : '0',
-                'aria-pressed': webMode === 'direct',
-                title: tx('page.originalHint'),
-                onClick: () => setWebMode('direct'),
-              }, tx('page.original')),
-            ]),
-            h('button', {
-              key: 'external',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('page.external'),
-              'aria-label': tx('page.external'),
-              disabled: webUrl === '',
-              onClick: () => { void openWebExternal(webUrl) },
-            }, h(ExternalIcon, {})),
-          ]),
-          source === 'web' && h('div', { key: 'webzoom', className: 'dr-group' }, [
-            h('button', {
-              key: 'out',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('page.zoomOut'),
-              'aria-label': tx('page.zoomOut'),
-              onClick: () => setWebZoom((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10)),
-            }, h(MinusIcon, {})),
-            h('button', {
-              key: 'pct',
-              type: 'button',
-              className: 'dr-btn',
-              title: tx('page.zoomReset'),
-              onClick: () => setWebZoom(1),
-              style: { minWidth: 48, fontVariantNumeric: 'tabular-nums' },
-            }, `${Math.round(webZoom * 100)}%`),
-            h('button', {
-              key: 'in',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('page.zoomIn'),
-              'aria-label': tx('page.zoomIn'),
-              onClick: () => setWebZoom((value) => Math.min(2, Math.round((value + 0.1) * 10) / 10)),
-            }, h(PlusIcon, {})),
-          ]),
-          source === 'web' && webMode === 'read' && webUrl !== '' && h('div', { key: 'webfind', className: 'dr-group' }, [
-            h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
-              h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
-              h('input', {
-                key: 'input',
-                className: 'dr-input dr-search-input',
-                value: webFindQuery,
-                placeholder: tx('webfind.placeholder'),
-                'aria-label': tx('webfind.placeholder'),
-                style: { paddingLeft: 27 },
-                onChange: (event) => setWebFindQuery(event.target.value),
-                onKeyDown: (event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    cycleWebFind(event.shiftKey ? -1 : 1)
-                  }
-                  if (event.key === 'Escape') {
-                    setWebFindQuery('')
-                    sendWebFind('', 0)
-                  }
-                },
-              }),
-            ]),
-            webFindQuery.trim() !== '' && h('span', { key: 'count', className: 'dr-match-count' }, webFind.total > 0 ? tx('toolbar.matches', { count: webFind.total }) : tx('toolbar.noMatches')),
-            webFind.total > 0 && h('button', {
-              key: 'prev',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('toolbar.previous'),
-              'aria-label': tx('toolbar.previous'),
-              onClick: () => cycleWebFind(-1),
-            }, h(ChevronIcon, { direction: 'up' })),
-            webFind.total > 0 && h('button', {
-              key: 'next',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('toolbar.next'),
-              'aria-label': tx('toolbar.next'),
-              onClick: () => cycleWebFind(1),
-            }, h(ChevronIcon, { direction: 'down' })),
-          ]),
-          source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
-            h('input', {
-              key: 'page',
-              ref: pageInputRef,
-              className: 'dr-input dr-page-input',
-              value: pageInput,
-              inputMode: 'numeric',
-              'aria-label': tx('toolbar.page'),
-              onChange: (event) => setPageInput(event.target.value.replace(/[^0-9]/g, '')),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') goToPage(pageInput)
-              },
-              onBlur: () => goToPage(pageInput),
-            }),
-            h('span', { key: 'of', className: 'dr-match-count' }, `${tx('toolbar.of')} ${doc.pages}`),
-          ]),
-          source === 'pdf' && doc !== null && h('div', { key: 'zoom', className: 'dr-group' }, [
-            h('button', {
-              key: 'out',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('toolbar.zoomOut'),
-              'aria-label': tx('toolbar.zoomOut'),
-              onClick: () => setZoom((value) => Math.max(0.6, Math.round((value - 0.1) * 10) / 10)),
-            }, h(MinusIcon, {})),
-            h('button', {
-              key: 'pct',
-              type: 'button',
-              className: 'dr-btn',
-              title: tx('toolbar.fit'),
-              onClick: () => setZoom(1),
-              style: { minWidth: 48, fontVariantNumeric: 'tabular-nums' },
-            }, `${Math.round(zoom * 100)}%`),
-            h('button', {
-              key: 'in',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('toolbar.zoomIn'),
-              'aria-label': tx('toolbar.zoomIn'),
-              onClick: () => setZoom((value) => Math.min(2.4, Math.round((value + 0.1) * 10) / 10)),
-            }, h(PlusIcon, {})),
-          ]),
-          source === 'pdf' && doc !== null && h('div', { key: 'search', ref: searchGroupRef, className: 'dr-group dr-search-group' }, [
-            h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
-              h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
-              h('input', {
-                key: 'input',
-                ref: searchInputRef,
-                className: 'dr-input dr-search-input',
-                value: searchQuery,
-                placeholder: tx('toolbar.find'),
-                'aria-label': tx('toolbar.find'),
-                style: { paddingLeft: 27 },
-                onChange: (event) => setSearchQuery(event.target.value),
-                onKeyDown: (event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault()
-                    if (search?.pages?.length) cycleMatch(event.shiftKey ? -1 : 1)
-                    else if (doc !== null) goToPage(1)
-                  }
-                  if (event.key === 'Escape') {
-                    if (searchOpen) setSearchOpen(false)
-                    else setSearchQuery('')
-                  }
-                },
-              }),
-            ]),
-            search !== null && !search.loading && (search.pages.length > 0
-              ? h('button', {
-                key: 'count',
+                className: 'dr-btn dr-icon',
+                title: tx('page.forward'),
+                'aria-label': tx('page.forward'),
+                disabled: webNav.index >= webNav.entries.length - 1,
+                onClick: webForward,
+              }, h(ChevronIcon, { direction: 'right' })),
+              h('button', {
+                key: 'reload',
                 type: 'button',
-                className: 'dr-match-count dr-count-btn',
-                title: tx('toolbar.results'),
+                className: 'dr-btn dr-icon',
+                title: tx('page.reload'),
+                'aria-label': tx('page.reload'),
+                disabled: webUrl === '',
+                onClick: reloadWeb,
+              }, h(ReloadIcon, {})),
+              h('div', {
+                key: 'mode',
+                className: 'dr-mode-switch',
+                role: 'group',
+                'aria-label': tx('source.label'),
+              }, [
+                h('button', {
+                  key: 'read',
+                  type: 'button',
+                  className: 'dr-mode-btn',
+                  'data-on': webMode === 'read' ? '1' : '0',
+                  'aria-pressed': webMode === 'read',
+                  title: tx('page.readerHint'),
+                  onClick: () => setWebMode('read'),
+                }, tx('page.reader')),
+                h('button', {
+                  key: 'direct',
+                  type: 'button',
+                  className: 'dr-mode-btn',
+                  'data-on': webMode === 'direct' ? '1' : '0',
+                  'aria-pressed': webMode === 'direct',
+                  title: tx('page.originalHint'),
+                  onClick: () => setWebMode('direct'),
+                }, tx('page.original')),
+              ]),
+              h('button', {
+                key: 'external',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('page.external'),
+                'aria-label': tx('page.external'),
+                disabled: webUrl === '',
+                onClick: () => { void openWebExternal(webUrl) },
+              }, h(ExternalIcon, {})),
+            ]),
+            source === 'web' && h('div', { key: 'webzoom', className: 'dr-group' }, [
+              h('button', {
+                key: 'out',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('page.zoomOut'),
+                'aria-label': tx('page.zoomOut'),
+                onClick: () => setWebZoom((value) => Math.max(0.5, Math.round((value - 0.1) * 10) / 10)),
+              }, h(MinusIcon, {})),
+              h('button', {
+                key: 'pct',
+                type: 'button',
+                className: 'dr-btn',
+                title: tx('page.zoomReset'),
+                onClick: () => setWebZoom(1),
+                style: { minWidth: 48, fontVariantNumeric: 'tabular-nums' },
+              }, `${Math.round(webZoom * 100)}%`),
+              h('button', {
+                key: 'in',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('page.zoomIn'),
+                'aria-label': tx('page.zoomIn'),
+                onClick: () => setWebZoom((value) => Math.min(2, Math.round((value + 0.1) * 10) / 10)),
+              }, h(PlusIcon, {})),
+            ]),
+            source === 'web' && webMode === 'read' && webUrl !== '' && h('div', { key: 'webfind', className: 'dr-group' }, [
+              h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
+                h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
+                h('input', {
+                  key: 'input',
+                  className: 'dr-input dr-search-input',
+                  value: webFindQuery,
+                  placeholder: tx('webfind.placeholder'),
+                  'aria-label': tx('webfind.placeholder'),
+                  style: { paddingLeft: 27 },
+                  onChange: (event) => setWebFindQuery(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      cycleWebFind(event.shiftKey ? -1 : 1)
+                    }
+                    if (event.key === 'Escape') {
+                      setWebFindQuery('')
+                      sendWebFind('', 0)
+                    }
+                  },
+                }),
+              ]),
+              webFindQuery.trim() !== '' && h('span', { key: 'count', className: 'dr-match-count' }, webFind.total > 0 ? tx('toolbar.matches', { count: webFind.total }) : tx('toolbar.noMatches')),
+              webFind.total > 0 && h('button', {
+                key: 'prev',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('toolbar.previous'),
+                'aria-label': tx('toolbar.previous'),
+                onClick: () => cycleWebFind(-1),
+              }, h(ChevronIcon, { direction: 'up' })),
+              webFind.total > 0 && h('button', {
+                key: 'next',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('toolbar.next'),
+                'aria-label': tx('toolbar.next'),
+                onClick: () => cycleWebFind(1),
+              }, h(ChevronIcon, { direction: 'down' })),
+            ]),
+            source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
+              h('input', {
+                key: 'page',
+                ref: pageInputRef,
+                className: 'dr-input dr-page-input',
+                value: pageInput,
+                inputMode: 'numeric',
+                'aria-label': tx('toolbar.page'),
+                onChange: (event) => setPageInput(event.target.value.replace(/[^0-9]/g, '')),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter') goToPage(pageInput)
+                },
+                onBlur: () => goToPage(pageInput),
+              }),
+              h('span', { key: 'of', className: 'dr-match-count' }, `${tx('toolbar.of')} ${doc.pages}`),
+            ]),
+            source === 'pdf' && doc !== null && h('div', { key: 'zoom', className: 'dr-group' }, [
+              h('button', {
+                key: 'out',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('toolbar.zoomOut'),
+                'aria-label': tx('toolbar.zoomOut'),
+                onClick: () => setZoom((value) => Math.max(0.6, Math.round((value - 0.1) * 10) / 10)),
+              }, h(MinusIcon, {})),
+              h('button', {
+                key: 'pct',
+                type: 'button',
+                className: 'dr-btn',
+                title: tx('toolbar.fit'),
+                onClick: () => setZoom(1),
+                style: { minWidth: 48, fontVariantNumeric: 'tabular-nums' },
+              }, `${Math.round(zoom * 100)}%`),
+              h('button', {
+                key: 'in',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('toolbar.zoomIn'),
+                'aria-label': tx('toolbar.zoomIn'),
+                onClick: () => setZoom((value) => Math.min(2.4, Math.round((value + 0.1) * 10) / 10)),
+              }, h(PlusIcon, {})),
+            ]),
+            source === 'pdf' && doc !== null && h('div', { key: 'search', ref: searchGroupRef, className: 'dr-group dr-search-group' }, [
+              h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
+                h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
+                h('input', {
+                  key: 'input',
+                  ref: searchInputRef,
+                  className: 'dr-input dr-search-input',
+                  value: searchQuery,
+                  placeholder: tx('toolbar.find'),
+                  'aria-label': tx('toolbar.find'),
+                  style: { paddingLeft: 27 },
+                  onChange: (event) => setSearchQuery(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      if (search?.pages?.length) cycleMatch(event.shiftKey ? -1 : 1)
+                      else if (doc !== null) goToPage(1)
+                    }
+                    if (event.key === 'Escape') {
+                      if (searchOpen) setSearchOpen(false)
+                      else setSearchQuery('')
+                    }
+                  },
+                }),
+              ]),
+              search !== null && !search.loading && (search.pages.length > 0
+                ? h('button', {
+                  key: 'count',
+                  type: 'button',
+                  className: 'dr-match-count dr-count-btn',
+                  title: tx('toolbar.results'),
+                  'aria-label': tx('toolbar.results'),
+                  'aria-expanded': searchOpen,
+                  onClick: () => setSearchOpen((value) => !value),
+                }, tx('toolbar.matches', { count: search.total }))
+                : h('span', { key: 'count', className: 'dr-match-count' }, tx('toolbar.noMatches'))),
+              search !== null && search.pages.length > 0 && h('button', {
+                key: 'prev',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('toolbar.previous'),
+                'aria-label': tx('toolbar.previous'),
+                onClick: () => cycleMatch(-1),
+              }, h(ChevronIcon, { direction: 'up' })),
+              search !== null && search.pages.length > 0 && h('button', {
+                key: 'next',
+                type: 'button',
+                className: 'dr-btn dr-icon',
+                title: tx('toolbar.next'),
+                'aria-label': tx('toolbar.next'),
+                onClick: () => cycleMatch(1),
+              }, h(ChevronIcon, { direction: 'down' })),
+              searchOpen && search !== null && !search.loading && search.pages.length > 0 && h('div', {
+                key: 'results',
+                className: 'dr-search-results',
+                role: 'listbox',
                 'aria-label': tx('toolbar.results'),
-                'aria-expanded': searchOpen,
-                onClick: () => setSearchOpen((value) => !value),
-              }, tx('toolbar.matches', { count: search.total }))
-              : h('span', { key: 'count', className: 'dr-match-count' }, tx('toolbar.noMatches'))),
-            search !== null && search.pages.length > 0 && h('button', {
-              key: 'prev',
+              }, search.pages.slice(0, 40).map((row, index) => h('button', {
+                key: `${row.page}-${index}`,
+                type: 'button',
+                role: 'option',
+                'aria-selected': index === search.index,
+                className: `dr-search-result${index === search.index ? ' dr-active' : ''}`,
+                onClick: () => {
+                  setSearch((current) => (current === null ? current : { ...current, index }))
+                  goToPage(row.page)
+                  setSearchOpen(false)
+                },
+              }, [
+                h('span', { key: 'p', className: 'dr-result-page' }, String(row.page)),
+                h('span', { key: 's', className: 'dr-result-snippet' }, typeof row.snippet === 'string' ? row.snippet : ''),
+                h('span', { key: 'c', className: 'dr-result-count' }, String(row.count ?? '')),
+              ]))),
+            ]),
+            source === 'pdf' && doc !== null && h('button', {
+              key: 'toc',
               type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('toolbar.previous'),
-              'aria-label': tx('toolbar.previous'),
-              onClick: () => cycleMatch(-1),
-            }, h(ChevronIcon, { direction: 'up' })),
-            search !== null && search.pages.length > 0 && h('button', {
-              key: 'next',
-              type: 'button',
-              className: 'dr-btn dr-icon',
-              title: tx('toolbar.next'),
-              'aria-label': tx('toolbar.next'),
-              onClick: () => cycleMatch(1),
-            }, h(ChevronIcon, { direction: 'down' })),
-            searchOpen && search !== null && !search.loading && search.pages.length > 0 && h('div', {
-              key: 'results',
-              className: 'dr-search-results',
-              role: 'listbox',
-              'aria-label': tx('toolbar.results'),
-            }, search.pages.slice(0, 40).map((row, index) => h('button', {
-              key: `${row.page}-${index}`,
-              type: 'button',
-              role: 'option',
-              'aria-selected': index === search.index,
-              className: `dr-search-result${index === search.index ? ' dr-active' : ''}`,
-              onClick: () => {
-                setSearch((current) => (current === null ? current : { ...current, index }))
-                goToPage(row.page)
-                setSearchOpen(false)
-              },
-            }, [
-              h('span', { key: 'p', className: 'dr-result-page' }, String(row.page)),
-              h('span', { key: 's', className: 'dr-result-snippet' }, typeof row.snippet === 'string' ? row.snippet : ''),
-              h('span', { key: 'c', className: 'dr-result-count' }, String(row.count ?? '')),
-            ]))),
-          ]),
-          source === 'pdf' && doc !== null && h('button', {
-            key: 'toc',
-            type: 'button',
-            className: 'dr-btn',
-            title: tx('toc.title'),
-            'aria-label': tx('toc.title'),
-            'aria-expanded': tocOpen,
-            onClick: () => setTocOpen((value) => {
-              const next = !value
-              if (next) {
-                setNotesOpen(false)
-                setDocsOpen(false)
-              }
-              return next
-            }),
-            style: tocOpen
-              ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
-              : undefined,
-          }, [
-            h(TocIcon, { key: 'i' }),
-            tx('toc.open'),
-            outline.state === 'loading' && h('span', { key: 's', className: 'dr-spinner' }),
-            outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(outline.rows.length)),
-          ]),
-          source === 'pdf' && doc !== null && h('button', {
-            key: 'notes',
-            type: 'button',
-            className: 'dr-btn',
-            title: tx('notes.open'),
-            'aria-label': tx('notes.open'),
-            'aria-expanded': notesOpen,
-            onClick: () => setNotesOpen((value) => {
-              const next = !value
-              if (next) {
-                setTocOpen(false)
-                setDocsOpen(false)
-              }
-              return next
-            }),
-            style: notesOpen
-              ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
-              : undefined,
-          }, [
-            h(MarkerIcon, { key: 'i' }),
-            tx('notes.open'),
-            marks.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(marks.length)),
-          ]),
-          h('button', {
-            key: 'docs',
-            type: 'button',
-            className: 'dr-btn',
-            title: tx('docs.open'),
-            'aria-label': tx('docs.open'),
-            'aria-expanded': docsOpen,
-            onClick: () => {
-              setDocsOpen((value) => {
-                if (!value) {
-                  void refreshDocuments()
-                  setTocOpen(false)
+              className: 'dr-btn',
+              title: tx('toc.title'),
+              'aria-label': tx('toc.title'),
+              'aria-expanded': tocOpen,
+              onClick: () => setTocOpen((value) => {
+                const next = !value
+                if (next) {
                   setNotesOpen(false)
+                  setDocsOpen(false)
                 }
-                return !value
-              })
-            },
-            style: docsOpen
-              ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
-              : undefined,
-          }, [h(BookIcon, { key: 'i' }), tx('docs.open')]),
-          hasSession && h('button', {
-            key: 'panel',
-            type: 'button',
-            className: 'dr-btn dr-icon',
-            title: tx('chat.open'),
-            'aria-label': tx('chat.open'),
-            onClick: () => selectConversation(),
-          }, h(PageIcon, {})),
-          hasContent && h('button', {
-            key: 'reader',
-            type: 'button',
-            className: 'dr-btn',
-            title: collapsed ? tx('side.expand') : tx('side.collapse'),
-            'aria-label': collapsed ? tx('side.expand') : tx('side.collapse'),
-            onClick: () => setCollapsed(!collapsed),
-          }, [
-            h(ChevronIcon, { key: 'i', direction: collapsed ? 'left' : 'right' }),
-            collapsed ? tx('side.expand') : tx('side.collapse'),
+                return next
+              }),
+              style: tocOpen
+                ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
+                : undefined,
+            }, [
+              h(TocIcon, { key: 'i' }),
+              tx('toc.open'),
+              outline.state === 'loading' && h('span', { key: 's', className: 'dr-spinner' }),
+              outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(outline.rows.length)),
+            ]),
+            source === 'pdf' && doc !== null && h('button', {
+              key: 'notes',
+              type: 'button',
+              className: 'dr-btn',
+              title: tx('notes.open'),
+              'aria-label': tx('notes.open'),
+              'aria-expanded': notesOpen,
+              onClick: () => setNotesOpen((value) => {
+                const next = !value
+                if (next) {
+                  setTocOpen(false)
+                  setDocsOpen(false)
+                }
+                return next
+              }),
+              style: notesOpen
+                ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
+                : undefined,
+            }, [
+              h(MarkerIcon, { key: 'i' }),
+              tx('notes.open'),
+              marks.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(marks.length)),
+            ]),
+            h('button', {
+              key: 'docs',
+              type: 'button',
+              className: 'dr-btn',
+              title: tx('docs.open'),
+              'aria-label': tx('docs.open'),
+              'aria-expanded': docsOpen,
+              onClick: () => {
+                setDocsOpen((value) => {
+                  if (!value) {
+                    void refreshDocuments()
+                    setTocOpen(false)
+                    setNotesOpen(false)
+                  }
+                  return !value
+                })
+              },
+              style: docsOpen
+                ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
+                : undefined,
+            }, [h(BookIcon, { key: 'i' }), tx('docs.open')]),
+            hasSession && h('button', {
+              key: 'panel',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('chat.open'),
+              'aria-label': tx('chat.open'),
+              onClick: () => selectConversation(),
+            }, h(PageIcon, {})),
+            hasContent && h('button', {
+              key: 'reader',
+              type: 'button',
+              className: 'dr-btn',
+              title: collapsed ? tx('side.expand') : tx('side.collapse'),
+              'aria-label': collapsed ? tx('side.expand') : tx('side.collapse'),
+              onClick: () => setCollapsed(!collapsed),
+            }, [
+              h(ChevronIcon, { key: 'i', direction: collapsed ? 'left' : 'right' }),
+              collapsed ? tx('side.expand') : tx('side.collapse'),
+            ]),
           ]),
         ]),
 
