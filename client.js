@@ -98,6 +98,7 @@ window.__ModuleLoader__.load({
       'doc.pages': '{count} pages',
       'doc.selected': 'Selected text',
       'doc.loading': 'Parsing',
+      'more.open': 'More actions',
       'docs.open': 'Documents',
       'docs.title': 'Recent documents',
       'docs.empty': 'No documents yet. Open a PDF and it shows up here.',
@@ -233,6 +234,7 @@ window.__ModuleLoader__.load({
       'doc.pages': '{count} 页',
       'doc.selected': '选中文本',
       'doc.loading': '解析中',
+      'more.open': '更多操作',
       'docs.open': '文档',
       'docs.title': '最近的文档',
       'docs.empty': '还没有文档。打开一个 PDF 就会出现在这里。',
@@ -432,6 +434,14 @@ window.__ModuleLoader__.load({
       return h(Icon, { size }, [
         h('path', { key: 'a', d: 'M3.2 4.4c1.6-.5 3.3-.2 4.8.8v10.2c-1.5-1-3.2-1.3-4.8-.8V4.4Z', stroke: 'currentColor', strokeWidth: 1.35, strokeLinejoin: 'round' }),
         h('path', { key: 'b', d: 'M16.8 4.4c-1.6-.5-3.3-.2-4.8.8v10.2c1.5-1 3.2-1.3 4.8-.8V4.4Z', stroke: 'currentColor', strokeWidth: 1.35, strokeLinejoin: 'round' }),
+      ])
+    }
+
+    function MoreIcon({ size = 16 }) {
+      return h(Icon, { size }, [
+        h('circle', { key: 'a', cx: 4.6, cy: 10, r: 1.4, fill: 'currentColor' }),
+        h('circle', { key: 'b', cx: 10, cy: 10, r: 1.4, fill: 'currentColor' }),
+        h('circle', { key: 'c', cx: 15.4, cy: 10, r: 1.4, fill: 'currentColor' }),
       ])
     }
 
@@ -646,6 +656,18 @@ window.__ModuleLoader__.load({
 .dr-tip::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);right:0;z-index:70;padding:4px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:11px;line-height:1.4;white-space:nowrap;opacity:0;transform:translateY(-2px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;box-shadow:0 8px 20px rgba(0,0,0,.18)}
 .dr-tip:hover::after,.dr-tip:focus-visible::after{opacity:1;transform:none}
 .dr-sep{flex:none;width:1px;height:18px;margin:0 2px;background:var(--dsw-alias-border-l1)}
+.dr-more-wrap{position:relative;display:inline-flex}
+.dr-more{position:absolute;top:calc(100% + 8px);right:0;z-index:72;min-width:224px;max-width:320px;display:flex;flex-direction:column;gap:2px;padding:6px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-overlay);box-shadow:0 14px 36px rgba(0,0,0,.22)}
+.dr-more-row{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.dr-more-row:hover{background:var(--dsw-alias-bg-layer-2)}
+.dr-more-text{flex:1 1 auto;min-width:0}
+.dr-more-count{flex:none;font-size:10px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+.dr-more-block{display:flex;flex-direction:column;gap:5px;padding:5px 8px}
+.dr-more-label{font-size:10px;color:var(--dsw-alias-label-secondary)}
+.dr-more .dr-mode-switch{width:100%}
+.dr-more .dr-mode-btn{flex:1 1 0;height:24px}
+.dr-more-select{width:100%;max-width:100%}
+.dr-more-sep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l1)}
 .dr-brand{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:13px;font-weight:600;letter-spacing:.01em}
 .dr-brand svg{color:var(--dsw-alias-brand-primary)}
 .dr-doc-meta{flex:none;font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -1378,6 +1400,12 @@ window.__ModuleLoader__.load({
       // The desktop window draws its traffic lights over the top-left corner.
       // When this panel sits at the window edge, the first row has to start
       // clear of them or a click on our own controls can hit the close button.
+      const topbarRef = React.useRef(null)
+      const moreWrapRef = React.useRef(null)
+      const [barWidth, setBarWidth] = React.useState(0)
+      const [moreOpen, setMoreOpen] = React.useState(false)
+      const compactBar = barWidth > 0 && barWidth < 1460
+      const tightBar = barWidth > 0 && barWidth < 1200
       const [trafficInset, setTrafficInset] = React.useState(0)
       React.useEffect(() => {
         const element = rootRef.current
@@ -1396,6 +1424,37 @@ window.__ModuleLoader__.load({
           window.removeEventListener('resize', measure)
         }
       }, [])
+
+      React.useEffect(() => {
+        const element = topbarRef.current
+        if (element === null) return undefined
+        function measureBar() {
+          setBarWidth(element.getBoundingClientRect().width)
+        }
+        measureBar()
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measureBar) : null
+        if (observer !== null) observer.observe(element)
+        window.addEventListener('resize', measureBar)
+        return () => {
+          if (observer !== null) observer.disconnect()
+          window.removeEventListener('resize', measureBar)
+        }
+      }, [])
+
+      React.useEffect(() => {
+        if (!compactBar) setMoreOpen(false)
+      }, [compactBar])
+
+      React.useEffect(() => {
+        if (!moreOpen) return undefined
+        function onPointerDown(event) {
+          const wrap = moreWrapRef.current
+          if (wrap !== null && wrap.contains(event.target)) return
+          setMoreOpen(false)
+        }
+        document.addEventListener('pointerdown', onPointerDown, true)
+        return () => document.removeEventListener('pointerdown', onPointerDown, true)
+      }, [moreOpen])
       const [split, setSplit] = React.useState(() => {
         const saved = Number(safeGet('dsh.deepread.split'))
         return Number.isFinite(saved) && saved >= 30 && saved <= 78 ? saved : 54
@@ -2538,7 +2597,7 @@ window.__ModuleLoader__.load({
         style: { '--dr-zoom': String(zoom) },
       }, [
         h(StyleTag, { key: 'style' }),
-        h('div', { key: 'topbar', className: 'dr-topbar' }, [
+        h('div', { key: 'topbar', ref: topbarRef, className: 'dr-topbar' }, [
           h('div', {
             key: 'brand',
             className: 'dr-brand',
@@ -2863,7 +2922,7 @@ window.__ModuleLoader__.load({
                 h('span', { key: 'c', className: 'dr-result-count' }, String(row.count ?? '')),
               ]))),
             ]),
-            source === 'pdf' && doc !== null && h('button', {
+            !tightBar && source === 'pdf' && doc !== null && h('button', {
               key: 'toc',
               type: 'button',
               className: 'dr-btn dr-icon dr-icon-btn dr-tip',
@@ -2888,7 +2947,7 @@ window.__ModuleLoader__.load({
               outline.state === 'loading' && h('span', { key: 's', className: 'dr-icon-spinner' }),
               outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-count-badge' }, String(outline.rows.length)),
             ]),
-            source === 'pdf' && doc !== null && h('button', {
+            !tightBar && source === 'pdf' && doc !== null && h('button', {
               key: 'notes',
               type: 'button',
               className: 'dr-btn dr-icon dr-icon-btn dr-tip',
@@ -2910,7 +2969,7 @@ window.__ModuleLoader__.load({
               h(MarkerIcon, { key: 'i' }),
               marks.length > 0 && h('span', { key: 'n', className: 'dr-count-badge' }, String(marks.length)),
             ]),
-            h('button', {
+            !tightBar && h('button', {
               key: 'docs',
               type: 'button',
               className: 'dr-btn dr-icon dr-icon-btn dr-tip',
@@ -2931,8 +2990,8 @@ window.__ModuleLoader__.load({
                 ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
                 : undefined,
             }, [h(StackIcon, { key: 'i' })]),
-            !collapsed && h('span', { key: 'sep-side', className: 'dr-sep' }),
-            !collapsed && h('div', {
+            !compactBar && !collapsed && h('span', { key: 'sep-side', className: 'dr-sep' }),
+            !compactBar && !collapsed && h('div', {
               key: 'side-mode',
               className: 'dr-mode-switch',
               role: 'group',
@@ -2952,7 +3011,7 @@ window.__ModuleLoader__.load({
                 if (mode !== 'chat') setTermEnabled(true)
               },
             }, label))),
-            !collapsed && Array.isArray(sessionIds) && sessionIds.length > 0 && h('select', {
+            !compactBar && !collapsed && Array.isArray(sessionIds) && sessionIds.length > 0 && h('select', {
               key: 'side-session',
               className: 'dr-input dr-session-select',
               value: pickedSession,
@@ -2964,11 +3023,11 @@ window.__ModuleLoader__.load({
               ...sessionIds.map((id) => h('option', { key: id, value: id },
                 String(sessionsById?.[id]?.title || id).slice(0, 80))),
             ]),
-            !collapsed && h('span', {
+            !compactBar && !collapsed && h('span', {
               key: 'side-pill',
               className: `dr-session-pill${hasSession ? '' : ' dr-off'}`,
             }, hasSession ? tx('chat.live') : tx('chat.none')),
-            !collapsed && hasSession && h('button', {
+            !compactBar && !collapsed && hasSession && h('button', {
               key: 'conversation',
               type: 'button',
               className: 'dr-btn dr-icon dr-icon-btn dr-tip',
@@ -2984,6 +3043,123 @@ window.__ModuleLoader__.load({
               'aria-label': collapsed ? tx('side.expand') : tx('side.collapse'),
               onClick: () => setCollapsed(!collapsed),
             }, h(ChevronIcon, { key: 'i', direction: collapsed ? 'left' : 'right' })),
+
+            compactBar && h('div', { key: 'more-wrap', ref: moreWrapRef, className: 'dr-more-wrap' }, [
+              h('button', {
+                key: 'more-btn',
+                type: 'button',
+                className: 'dr-btn dr-icon dr-icon-btn dr-tip',
+                'data-tip': tx('more.open'),
+                'aria-label': tx('more.open'),
+                'aria-haspopup': 'menu',
+                'aria-expanded': moreOpen,
+                onClick: () => setMoreOpen((value) => !value),
+                style: moreOpen
+                  ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
+                  : undefined,
+              }, h(MoreIcon, {})),
+              moreOpen && h('div', { key: 'more-menu', className: 'dr-more', role: 'menu' }, [
+                tightBar && h('button', {
+                  key: 'toc',
+                  type: 'button',
+                  role: 'menuitem',
+                  className: 'dr-more-row',
+                  onClick: () => {
+                    setTocOpen(true)
+                    setNotesOpen(false)
+                    setDocsOpen(false)
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(TocIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('toc.open')),
+                  outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-more-count' }, String(outline.rows.length)),
+                ]),
+                tightBar && h('button', {
+                  key: 'notes',
+                  type: 'button',
+                  role: 'menuitem',
+                  className: 'dr-more-row',
+                  onClick: () => {
+                    setNotesOpen(true)
+                    setTocOpen(false)
+                    setDocsOpen(false)
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(MarkerIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('notes.open')),
+                  marks.length > 0 && h('span', { key: 'n', className: 'dr-more-count' }, String(marks.length)),
+                ]),
+                tightBar && h('button', {
+                  key: 'docs',
+                  type: 'button',
+                  role: 'menuitem',
+                  className: 'dr-more-row',
+                  onClick: () => {
+                    void refreshDocuments()
+                    setDocsOpen(true)
+                    setTocOpen(false)
+                    setNotesOpen(false)
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(StackIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('docs.open')),
+                ]),
+                tightBar && !collapsed && h('div', { key: 'sep-a', className: 'dr-more-sep' }),
+                !collapsed && h('div', { key: 'mode', className: 'dr-more-block' }, [
+                  h('span', { key: 'label', className: 'dr-more-label' }, tx('side.mode')),
+                  h('div', { key: 'switch', className: 'dr-mode-switch' }, [
+                    ['split', tx('side.split')],
+                    ['chat', tx('side.chat')],
+                    ['terminal', tx('side.terminal')],
+                  ].map(([mode, label]) => h('button', {
+                    key: mode,
+                    type: 'button',
+                    className: 'dr-mode-btn',
+                    'data-on': sideMode === mode ? '1' : undefined,
+                    'aria-pressed': sideMode === mode,
+                    onClick: () => {
+                      setSideMode(mode)
+                      if (mode !== 'chat') setTermEnabled(true)
+                    },
+                  }, label))),
+                ]),
+                !collapsed && Array.isArray(sessionIds) && sessionIds.length > 0 && h('div', { key: 'session', className: 'dr-more-block' }, [
+                  h('span', { key: 'label', className: 'dr-more-label' }, tx('chat.pick')),
+                  h('select', {
+                    key: 'select',
+                    className: 'dr-input dr-session-select dr-more-select',
+                    value: pickedSession,
+                    onChange: (event) => chooseSession(event.target.value),
+                  }, [
+                    h('option', { key: 'auto', value: '' }, tx('chat.follow')),
+                    ...sessionIds.map((id) => h('option', { key: id, value: id },
+                      String(sessionsById?.[id]?.title || id).slice(0, 80))),
+                  ]),
+                ]),
+                !collapsed && h('div', { key: 'status', className: 'dr-more-block' }, [
+                  h('span', {
+                    key: 'pill',
+                    className: `dr-session-pill${hasSession ? '' : ' dr-off'}`,
+                  }, hasSession ? tx('chat.live') : tx('chat.none')),
+                ]),
+                !collapsed && hasSession && h('button', {
+                  key: 'conversation',
+                  type: 'button',
+                  role: 'menuitem',
+                  className: 'dr-more-row',
+                  onClick: () => {
+                    selectConversation()
+                    setMoreOpen(false)
+                  },
+                }, [
+                  h(PageIcon, { key: 'i' }),
+                  h('span', { key: 'l', className: 'dr-more-text' }, tx('chat.open')),
+                ]),
+              ]),
+            ]),
           ]),
         ]),
 
