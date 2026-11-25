@@ -1412,16 +1412,30 @@ window.__ModuleLoader__.load({
         if (element === null) return undefined
         function measure() {
           const rect = element.getBoundingClientRect()
-          const overlap = rect.top < 30 ? Math.max(0, 84 - rect.left) : 0
-          setTrafficInset(Math.ceil(overlap))
+          let inset = rect.top < 30 ? Math.max(0, 84 - rect.left) : 0
+          // The application keeps its sidebar toggle and new-session button in
+          // this same top-left strip. When the panel reaches the window edge,
+          // start after those controls instead of underneath them.
+          if (rect.left < 40) {
+            for (const control of document.querySelectorAll('button, [role="button"]')) {
+              if (element.contains(control)) continue
+              const box = control.getBoundingClientRect()
+              if (box.width === 0 || box.height === 0) continue
+              if (box.top > 60 || box.left > 500) continue
+              inset = Math.max(inset, Math.ceil(box.right + 10 - rect.left - 12))
+            }
+          }
+          setTrafficInset(Math.max(0, Math.min(260, Math.ceil(inset))))
         }
         measure()
         const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
         if (observer !== null) observer.observe(element)
         window.addEventListener('resize', measure)
+        const late = [window.setTimeout(measure, 400), window.setTimeout(measure, 1200)]
         return () => {
           if (observer !== null) observer.disconnect()
           window.removeEventListener('resize', measure)
+          for (const timer of late) window.clearTimeout(timer)
         }
       }, [])
 
