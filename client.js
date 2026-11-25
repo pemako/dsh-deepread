@@ -2505,6 +2505,12 @@ window.__ModuleLoader__.load({
       }
 
       function pushWebUrl(url) {
+        // Re-opening the address already shown has to reload it; pushing the
+        // same entry changes nothing and would leave the loading overlay up.
+        if (webUrl === url) {
+          reloadWeb()
+          return
+        }
         setWebNav((prev) => {
           const entries = prev.entries.slice(0, prev.index + 1)
           if (entries[entries.length - 1] === url) return { entries, index: entries.length - 1 }
@@ -2685,10 +2691,11 @@ window.__ModuleLoader__.load({
             }),
             h('button', {
               key: 'go',
-              type: 'submit',
+              type: 'button',
               className: 'dr-btn dr-icon',
               title: tx('page.go'),
               'aria-label': tx('page.go'),
+              onClick: () => goWeb(webAddress),
             }, h(GlobeIcon, {})),
           ]),
           h('div', { key: 'actions', className: 'dr-head-actions' }, [
