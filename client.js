@@ -2620,7 +2620,7 @@ window.__ModuleLoader__.load({
         style: { '--dr-zoom': String(zoom) },
       }, [
         h(StyleTag, { key: 'style' }),
-        h('div', { key: 'topbar', ref: topbarRef, className: 'dr-topbar' }, [
+        h('div', { key: 'topbar', ref: topbarRef, className: 'dr-topbar', 'data-window-drag': '' }, [
           h('div', {
             key: 'brand',
             className: 'dr-brand',
@@ -2629,6 +2629,7 @@ window.__ModuleLoader__.load({
           h('div', {
             key: 'source',
             className: 'dr-mode-switch dr-source-switch',
+            'data-window-drag-recall': '',
             role: 'group',
             'aria-label': tx('source.label'),
           }, [
@@ -2653,6 +2654,7 @@ window.__ModuleLoader__.load({
             key: 'open',
             type: 'button',
             className: 'dr-btn dr-icon dr-icon-btn dr-tip',
+            'data-window-drag-recall': '',
             'data-tip': `${tx('toolbar.replace')} · ${doc.name}`,
             'aria-label': `${tx('toolbar.replace')} ${doc.name}`,
             onClick: () => fileRef.current?.click(),
@@ -2672,6 +2674,7 @@ window.__ModuleLoader__.load({
           source === 'web' && h('form', {
             key: 'address',
             style: { display: 'contents' },
+            'data-window-drag-recall': '',
             onSubmit: (event) => {
               event.preventDefault()
               goWeb(webAddress)
@@ -2698,7 +2701,7 @@ window.__ModuleLoader__.load({
               onClick: () => goWeb(webAddress),
             }, h(GlobeIcon, {})),
           ]),
-          h('div', { key: 'actions', className: 'dr-head-actions' }, [
+          h('div', { key: 'actions', className: 'dr-head-actions', 'data-window-drag-recall': '' }, [
             source === 'web' && h('div', { key: 'webnav', className: 'dr-group' }, [
               h('button', {
                 key: 'back',
@@ -2829,7 +2832,7 @@ window.__ModuleLoader__.load({
                 onClick: () => cycleWebFind(1),
               }, h(ChevronIcon, { direction: 'down' })),
             ]),
-            source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
+            source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group', 'data-window-drag-recall': '' }, [
               h('input', {
                 key: 'page',
                 ref: pageInputRef,
@@ -2845,7 +2848,7 @@ window.__ModuleLoader__.load({
               }),
               h('span', { key: 'of', className: 'dr-match-count' }, `${tx('toolbar.of')} ${doc.pages}`),
             ]),
-            source === 'pdf' && doc !== null && h('div', { key: 'zoom', className: 'dr-group' }, [
+            source === 'pdf' && doc !== null && h('div', { key: 'zoom', className: 'dr-group', 'data-window-drag-recall': '' }, [
               h('button', {
                 key: 'out',
                 type: 'button',
@@ -2871,7 +2874,7 @@ window.__ModuleLoader__.load({
                 onClick: () => setZoom((value) => Math.min(2.4, Math.round((value + 0.1) * 10) / 10)),
               }, h(PlusIcon, {})),
             ]),
-            source === 'pdf' && doc !== null && h('div', { key: 'search', ref: searchGroupRef, className: 'dr-group dr-search-group' }, [
+            source === 'pdf' && doc !== null && h('div', { key: 'search', ref: searchGroupRef, className: 'dr-group dr-search-group', 'data-window-drag-recall': '' }, [
               h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
                 h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
                 h('input', {
