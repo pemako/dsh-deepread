@@ -20,7 +20,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { lookup } from 'node:dns/promises'
 import { createWriteStream } from 'node:fs'
-import { mkdir, open, readFile, rename, rm, stat, writeFile, access } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile, access } from 'node:fs/promises'
 import { once } from 'node:events'
 import { isIP } from 'node:net'
 import { homedir } from 'node:os'
@@ -583,6 +583,77 @@ const BRIDGE = String.raw`(() => {
   window.addEventListener('load', announce);
   if (document.readyState === 'complete') announce();
   setTimeout(announce, 1200);
+  // In-page find: the page's DOM is unreachable from the application, so the
+  // bridge locates the matches, highlights them with the CSS Highlight API and
+  // scrolls the requested hit into view.
+  let findRanges = []
+  const clearFind = () => {
+    findRanges = []
+    try {
+      if (window.CSS && CSS.highlights) CSS.highlights.delete('deepread-find')
+    } catch (_) {}
+  }
+  const scrollToFind = (index) => {
+    const range = findRanges[index]
+    if (!range) return
+    try {
+      const rect = range.getBoundingClientRect()
+      const top = window.scrollY + rect.top - Math.max(80, window.innerHeight * 0.25)
+      window.scrollTo({ top, behavior: 'smooth' })
+    } catch (_) {}
+  }
+  const runFind = (query, index) => {
+    clearFind()
+    const needle = String(query || '').toLowerCase()
+    if (needle === '') {
+      post({ kind: 'findResult', total: 0, index: 0 })
+      return
+    }
+    const ranges = []
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const tag = node.parentElement ? node.parentElement.tagName : ''
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return NodeFilter.FILTER_REJECT
+        return node.nodeValue && node.nodeValue.length > 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+      },
+    })
+    while (ranges.length < 2000 && walker.nextNode()) {
+      const node = walker.currentNode
+      const haystack = node.nodeValue.toLowerCase()
+      let at = haystack.indexOf(needle)
+      while (at !== -1 && ranges.length < 2000) {
+        const range = document.createRange()
+        range.setStart(node, at)
+        range.setEnd(node, Math.min(node.nodeValue.length, at + needle.length))
+        ranges.push(range)
+        at = haystack.indexOf(needle, at + needle.length)
+      }
+    }
+    findRanges = ranges
+    if (ranges.length > 0 && window.CSS && CSS.highlights && typeof window.Highlight === 'function') {
+      try {
+        let style = document.getElementById('dsh-deepread-find-style')
+        if (style === null) {
+          style = document.createElement('style')
+          style.id = 'dsh-deepread-find-style'
+          style.textContent = '::highlight(deepread-find){background:rgba(255,214,0,.55);color:inherit}'
+          document.head.appendChild(style)
+        }
+        CSS.highlights.set('deepread-find', new Highlight(...ranges))
+      } catch (_) {}
+    }
+    const target = Number.isInteger(index) && index >= 0 && index < ranges.length ? index : 0
+    post({ kind: 'findResult', total: ranges.length, index: target })
+    scrollToFind(target)
+  }
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) return
+    const data = event.data
+    if (data === null || typeof data !== 'object' || data.__dshDeepreadCmd !== 1) return
+    if (data.kind !== 'find') return
+    runFind(data.query, data.index)
+  })
+
   window.addEventListener('scroll', () => {
     if (lastText === '' || scrolling !== 0) return;
     scrolling = setTimeout(() => {
@@ -843,6 +914,7 @@ export function apply(ctx) {
   const texts = join(root, 'text')
   const pages = join(root, 'pages')
   const temp = join(root, 'tmp')
+  const notes = join(root, 'notes')
 
   /** Parsed document text, kept hot while a reader is open. */
   const textCache = new Map()
@@ -895,25 +967,32 @@ export function apply(ctx) {
     })()
     return positionsReady
   }
+  async function persistPositions() {
+    await dirsReady
+    const temporary = join(temp, `positions-${process.pid}-${Date.now()}.json`)
+    await writeFile(temporary, JSON.stringify({ version: 1, positions: Object.fromEntries(positions) }), 'utf8')
+    await rename(temporary, positionsFile)
+  }
+
+  function queuePositionWrite() {
+    positionWrite = positionWrite.then(() => persistPositions()).catch((error) => {
+      ctx.logger?.warn?.(error)
+    })
+    return positionWrite
+  }
+
   async function savePosition(id, position) {
     await loadPositions()
     positions.set(id, position)
     while (positions.size > 1000) positions.delete(positions.keys().next().value)
-    positionWrite = positionWrite.then(async () => {
-      await dirsReady
-      const temporary = join(temp, `positions-${process.pid}-${Date.now()}.json`)
-      await writeFile(temporary, JSON.stringify({ version: 1, positions: Object.fromEntries(positions) }), 'utf8')
-      await rename(temporary, positionsFile)
-    }).catch((error) => {
-      ctx.logger?.warn?.(error)
-    })
-    return positionWrite
+    return queuePositionWrite()
   }
 
   const dirsReady = mkdir(docs, { recursive: true })
     .then(() => mkdir(texts, { recursive: true }))
     .then(() => mkdir(pages, { recursive: true }))
     .then(() => mkdir(temp, { recursive: true }))
+    .then(() => mkdir(notes, { recursive: true }))
 
   const paths = (id) => ({
     pdf: join(docs, `${id}.pdf`),
@@ -957,16 +1036,92 @@ export function apply(ctx) {
       if (!Array.isArray(documentPages) || documentPages.length === 0) return undefined
       if (!Number.isInteger(metaValue?.pages) || metaValue.pages < 1) return undefined
       if (documentPages.length < metaValue.pages) return undefined
-      if (metaValue.name !== name) {
-        metaValue.name = name
-        await dirsReady
-        await writeFile(paths(id).meta, JSON.stringify(metaValue), 'utf8')
-      }
+      metaValue.name = name
+      metaValue.openedAt = Date.now()
+      await dirsReady
+      await writeFile(paths(id).meta, JSON.stringify(metaValue), 'utf8')
       return { meta: metaValue, documentPages, reused: true }
     } catch (error) {
       if (error?.code !== 'ENOENT') ctx.logger?.warn?.(error)
       return undefined
     }
+  }
+
+  /** Highlight colours the reader offers; anything else is normalized away. */
+  const MARK_COLORS = new Set(['yellow', 'green', 'blue', 'pink', 'purple'])
+  const MAX_MARKS = 500
+  const MAX_MARK_BOXES = 400
+  const MAX_NOTE_CHARS = 4_000
+  const notesCache = new Map()
+  /** One serialized write per document, so two saves cannot interleave. */
+  const noteWrites = new Map()
+
+  function notesPath(id) {
+    return join(notes, `${id}.json`)
+  }
+
+  /**
+   * Accept only a well-shaped highlight: a page, a handful of normalized
+   * boxes, the quoted text, a palette colour and an optional note.
+   * @param raw - one stored or submitted annotation.
+   * @returns the normalized annotation, or undefined when it cannot be used.
+   */
+  function sanitizeAnnotation(raw) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+    const page = Number(raw.page)
+    if (!Number.isInteger(page) || page < 1 || page > 1_000_000) return undefined
+    if (!Array.isArray(raw.boxes) || raw.boxes.length === 0) return undefined
+    const boxes = []
+    for (const box of raw.boxes.slice(0, MAX_MARK_BOXES)) {
+      if (box === null || typeof box !== 'object') continue
+      const x = Number(box.x)
+      const y = Number(box.y)
+      const w = Number(box.w)
+      const h = Number(box.h)
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) continue
+      if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > 1.02 || y + h > 1.02) continue
+      boxes.push({ x: Math.min(1, x), y: Math.min(1, y), w: Math.min(1, w), h: Math.min(1, h) })
+    }
+    if (boxes.length === 0) return undefined
+    const text = typeof raw.text === 'string' ? raw.text.replace(/\s+/g, ' ').trim().slice(0, MAX_SELECTION) : ''
+    const note = typeof raw.note === 'string' ? raw.note.slice(0, MAX_NOTE_CHARS) : ''
+    const color = MARK_COLORS.has(raw.color) ? raw.color : 'yellow'
+    const id = typeof raw.id === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(raw.id) ? raw.id : randomUUID()
+    const now = Date.now()
+    const createdAt = Number.isFinite(raw.createdAt) ? Math.floor(raw.createdAt) : now
+    const updatedAt = Number.isFinite(raw.updatedAt) ? Math.floor(raw.updatedAt) : now
+    return { id, page, boxes, text, note, color, createdAt, updatedAt }
+  }
+
+  async function loadAnnotations(id) {
+    const hit = notesCache.get(id)
+    if (hit !== undefined) return hit
+    await dirsReady
+    let items = []
+    try {
+      const parsed = JSON.parse(await readFile(notesPath(id), 'utf8'))
+      const raw = Array.isArray(parsed?.items) ? parsed.items : []
+      items = raw.map(sanitizeAnnotation).filter((item) => item !== undefined).slice(0, MAX_MARKS)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') ctx.logger?.warn?.(error)
+    }
+    notesCache.set(id, items)
+    return items
+  }
+
+  async function saveAnnotations(id, items) {
+    await dirsReady
+    notesCache.set(id, items)
+    const previous = noteWrites.get(id) ?? Promise.resolve()
+    const work = previous.then(async () => {
+      const temporary = join(temp, `notes-${id}-${randomUUID()}.json`)
+      await writeFile(temporary, JSON.stringify({ version: 1, items }), 'utf8')
+      await rename(temporary, notesPath(id))
+    }).catch((error) => {
+      ctx.logger?.warn?.(error)
+    })
+    noteWrites.set(id, work)
+    await work
   }
 
   async function receivePdf(req) {
@@ -1045,6 +1200,7 @@ export function apply(ctx) {
       name,
       title: parsed.title || name,
       pages: parsed.pages,
+      openedAt: Date.now(),
     }
     await writeFile(text, JSON.stringify(documentPages), 'utf8')
     await writeFile(meta, JSON.stringify(metaValue), 'utf8')
@@ -1232,6 +1388,66 @@ export function apply(ctx) {
     return { query, total, pages: results.slice(0, 400) }
   }
 
+  /**
+   * The documents this reader has stored, newest first. Names come from the
+   * metadata sidecars, so the list stays cheap even with a large library.
+   * @returns up to 100 rows; malformed sidecars are skipped.
+   */
+  async function listDocuments() {
+    await dirsReady
+    let names = []
+    try {
+      names = await readdir(texts)
+    } catch {
+      return []
+    }
+    const rows = []
+    for (const name of names) {
+      const match = /^([a-f0-9]{24})\.meta\.json$/.exec(name)
+      if (match === null) continue
+      try {
+        const meta = JSON.parse(await readFile(join(texts, name), 'utf8'))
+        rows.push({
+          id: typeof meta.id === 'string' && DOC_ID.test(meta.id) ? meta.id : match[1],
+          name: typeof meta.name === 'string' ? meta.name : 'document.pdf',
+          title: typeof meta.title === 'string' ? meta.title : '',
+          pages: Number.isInteger(meta.pages) ? meta.pages : 0,
+          openedAt: Number.isFinite(meta.openedAt) ? Math.floor(meta.openedAt) : 0,
+        })
+      } catch {
+        // A half-written sidecar is not worth listing.
+      }
+    }
+    rows.sort((a, b) => b.openedAt - a.openedAt)
+    return rows.slice(0, 100)
+  }
+
+  /**
+   * Drop a document and everything the reader kept for it: the PDF, its
+   * text, outline and page images, its highlights and its reading position.
+   * @param id - the content-addressed document id.
+   */
+  async function removeDocument(id) {
+    if (!DOC_ID.test(id)) throw httpError(400, 'invalid document id')
+    await dirsReady
+    const target = paths(id)
+    await rm(target.pdf, { force: true })
+    await rm(target.text, { force: true })
+    await rm(target.meta, { force: true })
+    await rm(target.outline, { force: true })
+    await rm(target.pageDir, { recursive: true, force: true })
+    await rm(notesPath(id), { force: true })
+    textCache.delete(id)
+    metaCache.delete(id)
+    outlineCache.delete(id)
+    notesCache.delete(id)
+    for (const key of [...imageCache.keys()]) {
+      if (key.startsWith(`${id}:`)) imageCache.delete(key)
+    }
+    await loadPositions()
+    if (positions.delete(id)) await queuePositionWrite()
+  }
+
   async function handleAsk(body) {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       throw httpError(400, 'request body must be a JSON object')
@@ -1276,6 +1492,57 @@ export function apply(ctx) {
       source: { kind: 'user' },
     })
     return { ok: true, agent: agent.id, queued: agent.status === 'running' }
+  }
+
+  /**
+   * Read and change a document's highlights: add one, change its colour or
+   * note, or remove it. The whole list comes back so two tabs stay in step.
+   * @param body - the JSON request: docId, op, and the item or patch.
+   * @returns the stored list after the change.
+   */
+  async function handleAnnotations(body) {
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      throw httpError(400, 'request body must be a JSON object')
+    }
+    const docId = typeof body.docId === 'string' ? body.docId : ''
+    if (!DOC_ID.test(docId)) throw httpError(400, 'invalid document id')
+    try {
+      await loadMeta(docId)
+    } catch (error) {
+      if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+      throw error
+    }
+    const items = await loadAnnotations(docId)
+    if (body.op === 'add') {
+      const item = sanitizeAnnotation(body.item)
+      if (item === undefined) throw httpError(400, 'invalid highlight')
+      const next = [...items.filter((entry) => entry.id !== item.id), item].slice(-MAX_MARKS)
+      await saveAnnotations(docId, next)
+      return { items: next }
+    }
+    if (body.op === 'update') {
+      const id = typeof body.id === 'string' ? body.id : ''
+      const index = items.findIndex((entry) => entry.id === id)
+      if (index === -1) throw httpError(404, 'highlight not found')
+      const current = items[index]
+      const patch = body.patch !== null && typeof body.patch === 'object' && !Array.isArray(body.patch) ? body.patch : {}
+      const nextItem = {
+        ...current,
+        color: MARK_COLORS.has(patch.color) ? patch.color : current.color,
+        note: typeof patch.note === 'string' ? patch.note.slice(0, MAX_NOTE_CHARS) : current.note,
+        updatedAt: Date.now(),
+      }
+      const next = items.slice(0, index).concat(nextItem, items.slice(index + 1))
+      await saveAnnotations(docId, next)
+      return { items: next }
+    }
+    if (body.op === 'remove') {
+      const id = typeof body.id === 'string' ? body.id : ''
+      const next = items.filter((entry) => entry.id !== id)
+      if (next.length !== items.length) await saveAnnotations(docId, next)
+      return { items: next }
+    }
+    throw httpError(400, 'unknown annotation operation')
   }
 
   async function handleWebSearch(body) {
@@ -1391,6 +1658,16 @@ export function apply(ctx) {
         sendJson(res, 200, await handleOpenUrl(body, origin))
         return
       }
+      if (path === `${ROUTE}/documents/remove`) {
+        const id = typeof body.id === 'string' ? body.id : ''
+        await removeDocument(id)
+        sendJson(res, 200, { ok: true })
+        return
+      }
+      if (path === `${ROUTE}/annotations`) {
+        sendJson(res, 200, await handleAnnotations(body))
+        return
+      }
       if (path === `${ROUTE}/position`) {
         const id = typeof body.docId === 'string' ? body.docId : ''
         if (!DOC_ID.test(id)) throw httpError(400, 'invalid document id')
@@ -1443,6 +1720,22 @@ export function apply(ctx) {
           throw error
         }
         sendPng(res, await renderPage(id, number, clampDpi(url.searchParams.get('dpi'))))
+        return
+      }
+      if (path === `${ROUTE}/documents`) {
+        sendJson(res, 200, { items: await listDocuments() })
+        return
+      }
+      const annotationsMatch = new RegExp(`^${ROUTE}/annotations/([a-f0-9]{24})$`).exec(path)
+      if (annotationsMatch !== null) {
+        const id = annotationsMatch[1]
+        try {
+          await loadMeta(id)
+        } catch (error) {
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          throw error
+        }
+        sendJson(res, 200, { items: await loadAnnotations(id) })
         return
       }
       const positionMatch = new RegExp(`^${ROUTE}/position/([a-f0-9]{24})$`).exec(path)

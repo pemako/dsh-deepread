@@ -20,7 +20,11 @@ Drag the divider to change the split. A narrow window stacks the two sides inste
 
 Select text in either mode and the same bar appears at the bottom. Copy rebuilds plain text from the text layer, so Chinese doesn't come out with spaces between characters. Search opens a web search card inside the PDF; copying also opens it with the text already filled in. Ask AI sends the selection to the real conversation on the right as an ordinary user message, with the page title and address along for the ride when you're reading a page.
 
+Selections can also be kept. Pick a highlight colour, and the passage stays marked on the page; each highlight takes a note. The Highlights panel lists them by page, jumps to one, changes its colour or note, and removes it. They live next to the document on the Host, so they are still there after a restart and after switching computers.
+
 The toolbar jumps to a page, changes zoom, and finds text in the document. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom re-renders pages at a higher resolution, so text stays sharp when magnified. Outline shows the PDF bookmarks as a tree you can filter and click through, with the current page marked.
+
+Documents keeps what the reader has stored, newest first. Open another one from that list, or remove one together with its highlights.
 
 Page mode has its own zoom as well: the −/percentage/+ control, or ⌘/Ctrl with the scroll wheel. It changes the layout width of the iframe and then scales the result, so text reflows the way browser zoom does instead of becoming a magnified picture. The level is remembered.
 
@@ -45,6 +49,8 @@ Page number, in-page ratio, and zoom are saved per document. Switch panels or re
 Reader mode proxies the page through the Host route `/dsh-deepread/api/page`. It drops the origin's `X-Frame-Options` and CSP, adds a `<base>` so the origin's CSS, images, and scripts still come from the origin, and injects the selection bridge at `/dsh-deepread/api/bridge.js`. The proxied document carries `Content-Security-Policy: sandbox`, so opening it on its own still can't reach the app's origin. The panel only gets what the bridge reports: selected text, links, GET form searches, and the title.
 
 Original mode loads the page as it is inside a sandboxed iframe, which suits sites that need their own origin. There's no bridge in this mode, so selection-based actions are off; the panel says so and offers a way back to reader mode.
+
+Reader mode finds text inside the page too: the find field counts the matches, highlights them in the page, and steps through them without leaving the reader.
 
 Links and GET search forms go back to the panel, which proxies them again, so the iframe never wanders off to another site by itself. POST forms and Cmd/Ctrl+click open in the system browser. A page is capped at 12 MB. The address, source, mode, and page zoom are remembered on their own; PDFs and their positions are kept separately.
 

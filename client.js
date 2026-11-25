@@ -67,10 +67,12 @@ window.__ModuleLoader__.load({
       'error.ask': 'Could not send to the conversation: {message}',
       'error.noSession': 'Open a session first, then ask about the selection.',
       'error.notPdf': 'Choose a PDF file.',
+      'error.mark': 'Could not save the highlight: {message}',
       'selection.count': '{count} characters selected',
       'selection.copy': 'Copy',
       'selection.search': 'Search',
       'selection.ask': 'Ask AI',
+      'selection.highlight': 'Highlight',
       'selection.copied': 'Copied',
       'selection.copyFailed': 'Copy failed',
       'selection.asked': 'Sent to the conversation',
@@ -94,6 +96,26 @@ window.__ModuleLoader__.load({
       'doc.pages': '{count} pages',
       'doc.selected': 'Selected text',
       'doc.loading': 'Parsing',
+      'docs.open': 'Documents',
+      'docs.title': 'Recent documents',
+      'docs.empty': 'No documents yet. Open a PDF and it shows up here.',
+      'docs.remove': 'Remove',
+      'docs.confirm': 'Confirm',
+      'docs.pages': '{count} pages',
+      'error.docOpen': 'Could not open this document: {message}',
+      'notes.open': 'Highlights',
+      'notes.title': 'Highlights and notes',
+      'notes.empty': 'Nothing highlighted yet. Select text in the page, then highlight it.',
+      'notes.edit': 'Note',
+      'notes.placeholder': 'Write a note for this highlight',
+      'notes.save': 'Save',
+      'notes.delete': 'Delete',
+      'notes.close': 'Close',
+      'notes.colour': 'Colour',
+      'notes.count': '{count} highlights',
+      'notes.jump': 'Go to page {page}',
+      'toast.highlighted': 'Highlight saved',
+      'toast.markSaved': 'Note saved',
       'toast.sent': 'Sent to the conversation',
       'toast.copied': 'Copied to the clipboard',
       'toast.opened': 'PDF ready',
@@ -134,6 +156,7 @@ window.__ModuleLoader__.load({
       'page.forward': '前进',
       'page.reload': '刷新',
       'page.external': '用系统浏览器打开',
+      'webfind.placeholder': '在这个页面里查找',
       'page.reader': '阅读模式',
       'page.original': '原站模式',
       'page.readerHint': '阅读模式经本地代理嵌入网页，才能读取选中内容',
@@ -183,6 +206,7 @@ window.__ModuleLoader__.load({
       'selection.copy': '复制',
       'selection.search': '搜索',
       'selection.ask': '问 AI',
+      'selection.highlight': '高亮',
       'selection.copied': '已复制',
       'selection.copyFailed': '复制失败',
       'selection.asked': '已发送到对话',
@@ -206,6 +230,26 @@ window.__ModuleLoader__.load({
       'doc.pages': '{count} 页',
       'doc.selected': '选中文本',
       'doc.loading': '解析中',
+      'docs.open': '文档',
+      'docs.title': '最近的文档',
+      'docs.empty': '还没有文档。打开一个 PDF 就会出现在这里。',
+      'docs.remove': '删除',
+      'docs.confirm': '确认删除',
+      'docs.pages': '{count} 页',
+      'error.docOpen': '打不开这份文档：{message}',
+      'notes.open': '高亮',
+      'notes.title': '高亮与笔记',
+      'notes.empty': '还没有高亮。在页面上选中文字，点「高亮」即可。',
+      'notes.edit': '笔记',
+      'notes.placeholder': '给这条高亮写点笔记',
+      'notes.save': '保存',
+      'notes.delete': '删除',
+      'notes.close': '关闭',
+      'notes.colour': '颜色',
+      'notes.count': '{count} 条高亮',
+      'notes.jump': '跳到第 {page} 页',
+      'toast.highlighted': '高亮已保存',
+      'toast.markSaved': '笔记已保存',
       'toast.sent': '已发送到对话',
       'toast.copied': '已复制到剪贴板',
       'toast.opened': 'PDF 已就绪',
@@ -385,6 +429,12 @@ window.__ModuleLoader__.load({
       return h(Icon, { size }, [
         h('path', { key: 'a', d: 'M3.2 4.4c1.6-.5 3.3-.2 4.8.8v10.2c-1.5-1-3.2-1.3-4.8-.8V4.4Z', stroke: 'currentColor', strokeWidth: 1.35, strokeLinejoin: 'round' }),
         h('path', { key: 'b', d: 'M16.8 4.4c-1.6-.5-3.3-.2-4.8.8v10.2c1.5-1 3.2-1.3 4.8-.8V4.4Z', stroke: 'currentColor', strokeWidth: 1.35, strokeLinejoin: 'round' }),
+      ])
+    }
+
+    function MarkerIcon({ size = 16 }) {
+      return h(Icon, { size }, [
+        h('path', { key: 'a', d: 'M4.6 15.4 6 9.9l5.5-5.5a1.5 1.5 0 0 1 2.1 0l2 2a1.5 1.5 0 0 1 0 2.1L10.1 14l-5.5 1.4Z', stroke: 'currentColor', strokeWidth: 1.3, strokeLinejoin: 'round' }),
       ])
     }
 
@@ -714,6 +764,43 @@ window.__ModuleLoader__.load({
 .dr-result-page{font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
 .dr-result-snippet{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dsw-alias-label-primary)}
 .dr-result-count{font-size:11px;text-align:right;color:var(--dsw-alias-label-secondary)}
+.dr-marks{position:absolute;inset:0;pointer-events:none;z-index:0}
+.dr-mark{position:absolute;border-radius:2px;mix-blend-mode:multiply;background:rgba(255,214,0,.38)}
+.dr-mark[data-color="green"]{background:rgba(48,196,120,.34)}
+.dr-mark[data-color="blue"]{background:rgba(64,150,255,.30)}
+.dr-mark[data-color="pink"]{background:rgba(255,110,165,.32)}
+.dr-mark[data-color="purple"]{background:rgba(150,115,255,.30)}
+.dr-notes{width:min(350px,80%)}
+.dr-note-row{display:flex;align-items:center;gap:5px;padding:2px 4px;border-radius:6px}
+.dr-note-row:hover{background:var(--dsw-alias-bg-layer-2)}
+.dr-note-row.dr-active{background:color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent)}
+.dr-note-jump{flex:1 1 auto;min-width:0;display:flex;align-items:baseline;gap:6px;border:0;background:transparent;padding:4px 2px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.dr-note-page{flex:none;font-size:10px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}
+.dr-note-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.dr-note-dot{flex:none;width:9px;height:9px;border-radius:50%;background:rgba(255,214,0,.95);box-shadow:0 0 0 1px rgba(0,0,0,.12)}
+.dr-note-dot[data-color="green"]{background:rgba(48,196,120,.95)}
+.dr-note-dot[data-color="blue"]{background:rgba(64,150,255,.95)}
+.dr-note-dot[data-color="pink"]{background:rgba(255,110,165,.95)}
+.dr-note-dot[data-color="purple"]{background:rgba(150,115,255,.95)}
+.dr-note-action{height:22px;font-size:10px;padding:0 6px}
+.dr-note-editor{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}
+.dr-note-colors{display:flex;gap:6px}
+.dr-note-swatch{width:18px;height:18px;padding:0;border-radius:50%;border:1px solid var(--dsw-alias-border-l2);background:rgba(255,214,0,.95);cursor:pointer}
+.dr-note-swatch[data-color="green"]{background:rgba(48,196,120,.95)}
+.dr-note-swatch[data-color="blue"]{background:rgba(64,150,255,.95)}
+.dr-note-swatch[data-color="pink"]{background:rgba(255,110,165,.95)}
+.dr-note-swatch[data-color="purple"]{background:rgba(150,115,255,.95)}
+.dr-note-swatch.dr-active{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dr-note-input{width:100%;min-height:58px;resize:vertical;font-size:11px;line-height:1.5}
+.dr-note-actions{display:flex;gap:6px;justify-content:flex-end}
+.dr-docs{width:min(390px,84%)}
+.dr-doc-row{display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:6px}
+.dr-doc-row:hover{background:var(--dsw-alias-bg-layer-2)}
+.dr-doc-row.dr-active{background:color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, transparent)}
+.dr-doc-open{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;border:0;background:transparent;padding:5px 4px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.dr-doc-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dsw-alias-label-primary)}
+.dr-doc-meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--dsw-alias-label-secondary)}
+.dr-btn.dr-bad{color:var(--dsw-alias-state-error-primary)}
 `
 
     function StyleTag() {
@@ -790,7 +877,9 @@ window.__ModuleLoader__.load({
     // Page renderer: image under an absolutely positioned text layer. The
     // word boxes come from Poppler, so selection and copy are native.
     // ---------------------------------------------------------------------
-    const PageView = React.memo(function PageView({ docId, pageNumber, page, highlight, imageDpi }) {
+    const EMPTY_MARKS = Object.freeze([])
+
+    const PageView = React.memo(function PageView({ docId, pageNumber, page, highlight, imageDpi, marks }) {
       const shellRef = React.useRef(null)
       const [visible, setVisible] = React.useState(false)
       const [words, setWords] = React.useState(null)
@@ -852,6 +941,18 @@ window.__ModuleLoader__.load({
         }),
         !loaded && h('div', { key: 'load', className: 'dr-page-loading' }, h('span', { className: 'dr-spinner' })),
         loaded && words === null && h('div', { key: 'words-loading', className: 'dr-page-loading' }, h('span', { className: 'dr-spinner' })),
+        marks !== undefined && marks.length > 0 && h('div', { key: 'marks', className: 'dr-marks' },
+          marks.flatMap((mark) => (Array.isArray(mark.boxes) ? mark.boxes : []).map((box, index) => h('div', {
+            key: `${mark.id}-${index}`,
+            className: 'dr-mark',
+            'data-color': mark.color,
+            style: {
+              left: `${box.x * 100}%`,
+              top: `${box.y * 100}%`,
+              width: `${box.w * 100}%`,
+              height: `${box.h * 100}%`,
+            },
+          })))),
         h('div', {
           key: 'words',
           className: 'dr-words',
@@ -1266,6 +1367,16 @@ window.__ModuleLoader__.load({
       const [searchOpen, setSearchOpen] = React.useState(false)
       const searchGroupRef = React.useRef(null)
       const searchInputRef = React.useRef(null)
+      const [marks, setMarks] = React.useState([])
+      const [notesOpen, setNotesOpen] = React.useState(false)
+      const [activeMarkId, setActiveMarkId] = React.useState(null)
+      const [noteDraft, setNoteDraft] = React.useState('')
+      const [markColor, setMarkColor] = React.useState('yellow')
+      const [notesBusy, setNotesBusy] = React.useState(false)
+      const [docsOpen, setDocsOpen] = React.useState(false)
+      const [docs, setDocs] = React.useState([])
+      const [docsBusy, setDocsBusy] = React.useState(false)
+      const [pendingRemoveId, setPendingRemoveId] = React.useState(null)
       const [selection, setSelection] = React.useState(null)
       const [web, setWeb] = React.useState(null)
       /**
@@ -1298,6 +1409,8 @@ window.__ModuleLoader__.load({
         return Number.isFinite(stored) && stored >= 0.5 && stored <= 2 ? Math.round(stored * 10) / 10 : 1
       })
       const [webViewport, setWebViewport] = React.useState({ width: 0, height: 0 })
+      const [webFindQuery, setWebFindQuery] = React.useState('')
+      const [webFind, setWebFind] = React.useState({ total: 0, index: 0 })
       const webUrl = webNav.entries[webNav.index] ?? ''
       const [toast, setToast] = React.useState(null)
       const [asking, setAsking] = React.useState(false)
@@ -1567,6 +1680,24 @@ window.__ModuleLoader__.load({
         return () => window.clearTimeout(id)
       }, [searchQuery, doc])
 
+      React.useEffect(() => {
+        if (doc === null) {
+          setMarks([])
+          setActiveMarkId(null)
+          return undefined
+        }
+        let cancelled = false
+        fetch(apiUrl(`/annotations/${doc.id}`))
+          .then((response) => readJsonResponse(response))
+          .then((value) => {
+            if (!cancelled) setMarks(Array.isArray(value?.items) ? value.items : [])
+          })
+          .catch(() => {
+            if (!cancelled) setMarks([])
+          })
+        return () => { cancelled = true }
+      }, [doc])
+
       // A pointer outside the search cluster dismisses the hit list, the same
       // way a menu closes; the toggle button stays inside the cluster.
       React.useEffect(() => {
@@ -1591,6 +1722,20 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         safeSet('dsh.deepread.webzoom', String(webZoom))
       }, [webZoom])
+
+      React.useEffect(() => {
+        if (source !== 'web' || webMode !== 'read' || webUrl === '') {
+          setWebFind({ total: 0, index: 0 })
+          return undefined
+        }
+        const timer = window.setTimeout(() => {
+          setWebFind((current) => ({ ...current, index: 0 }))
+          sendWebFind(webFindQuery, 0)
+        }, 300)
+        return () => window.clearTimeout(timer)
+        // sendWebFind only reads the current frame and the query.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [webFindQuery, source, webMode, webUrl])
 
       /** The frame's layout box follows the pane, so zoom needs the pane size. */
       React.useEffect(() => {
@@ -1653,16 +1798,21 @@ window.__ModuleLoader__.load({
           } else if (data.kind === 'zoom') {
             const direction = data.direction === 1 ? 1 : -1
             setWebZoom((value) => Math.max(0.5, Math.min(2, Math.round((value + direction * 0.1) * 10) / 10)))
+          } else if (data.kind === 'findResult') {
+            const total = Number.isInteger(data.total) ? data.total : 0
+            const index = Number.isInteger(data.index) ? data.index : 0
+            setWebFind({ total, index })
           } else if (data.kind === 'ready') {
             setWebTitle(typeof data.title === 'string' ? data.title : '')
             setWebLoading(false)
+            if (webFindQuery.trim() !== '') sendWebFind(webFindQuery, 0)
           } else if (data.kind === 'escape') {
             setSelection(null)
           }
         }
         window.addEventListener('message', onMessage)
         return () => window.removeEventListener('message', onMessage)
-      }, [source, webUrl, webTitle])
+      }, [source, webUrl, webTitle, webFindQuery])
 
       const errors = React.useMemo(() => {
         const list = []
@@ -1944,11 +2094,223 @@ window.__ModuleLoader__.load({
         rememberPage(page, 0)
       }
 
+      /**
+       * Turn the current selection into per-page normalized boxes: each hit
+       * word keeps its rectangle relative to its own page, so a highlight
+       * survives zoom and resolution changes.
+       * @returns one { page, boxes } entry per page the selection touches.
+       */
+      function selectionBoxes() {
+        const container = viewerRef.current
+        if (container === null) return []
+        const windowSelection = window.getSelection()
+        if (windowSelection === null || windowSelection.rangeCount === 0 || windowSelection.isCollapsed) return []
+        const range = windowSelection.getRangeAt(0)
+        const byPage = new Map()
+        for (const word of container.querySelectorAll('.dr-word')) {
+          let hit = false
+          try {
+            hit = range.intersectsNode(word)
+          } catch {
+            hit = false
+          }
+          if (!hit) continue
+          const pageElement = word.closest('.dr-page')
+          const page = Number(word.dataset.page)
+          if (pageElement === null || !Number.isInteger(page) || page < 1) continue
+          const wordRect = word.getBoundingClientRect()
+          const pageRect = pageElement.getBoundingClientRect()
+          if (pageRect.width <= 0 || pageRect.height <= 0 || wordRect.width <= 0 || wordRect.height <= 0) continue
+          const entry = byPage.get(page) ?? { page, boxes: [] }
+          if (entry.boxes.length >= 400) continue
+          entry.boxes.push({
+            x: Math.max(0, Math.min(1, (wordRect.left - pageRect.left) / pageRect.width)),
+            y: Math.max(0, Math.min(1, (wordRect.top - pageRect.top) / pageRect.height)),
+            w: Math.max(0.001, Math.min(1, wordRect.width / pageRect.width)),
+            h: Math.max(0.001, Math.min(1, wordRect.height / pageRect.height)),
+          })
+          byPage.set(page, entry)
+        }
+        return [...byPage.values()]
+      }
+
+      function newMarkId() {
+        try {
+          if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+        } catch {
+          // Fall through to a timestamp id.
+        }
+        return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+      }
+
+      async function refreshDocuments() {
+        setDocsBusy(true)
+        try {
+          const value = await fetch(apiUrl('/documents')).then((response) => readJsonResponse(response))
+          setDocs(Array.isArray(value?.items) ? value.items : [])
+        } catch {
+          setDocs([])
+        } finally {
+          setDocsBusy(false)
+        }
+      }
+
+      async function openDocumentById(id) {
+        if (!/^[a-f0-9]{24}$/.test(id)) return
+        setBusy(tx('loading.opening'))
+        try {
+          const [value, position] = await Promise.all([
+            fetch(apiUrl(`/doc/${id}`)).then((response) => readJsonResponse(response)),
+            loadStoredPosition(id),
+          ])
+          if (!value || typeof value.id !== 'string') throw new Error('document not found')
+          applyLoadedPosition(value, position)
+          setDoc(value)
+          safeSet('dsh.deepread.doc', value.id)
+          setSource('pdf')
+          setSearchQuery('')
+          setSearch(null)
+          setSelection(null)
+          setActiveMarkId(null)
+          setDocsOpen(false)
+        } catch (error) {
+          showError(tx('error.docOpen', { message: error instanceof Error ? error.message : String(error) }))
+        } finally {
+          setBusy('')
+        }
+      }
+
+      async function removeDocument(id) {
+        if (doc !== null && doc.id === id) {
+          setDoc(null)
+          setMarks([])
+          setActiveMarkId(null)
+          safeRemove('dsh.deepread.doc')
+        }
+        setDocsBusy(true)
+        try {
+          await postJson('/documents/remove', { id })
+          await refreshDocuments()
+        } catch (error) {
+          showError(tx('error.docOpen', { message: error instanceof Error ? error.message : String(error) }))
+        } finally {
+          setDocsBusy(false)
+        }
+      }
+
+      function requestRemoveDocument(id) {
+        if (pendingRemoveId === id) {
+          setPendingRemoveId(null)
+          void removeDocument(id)
+          return
+        }
+        setPendingRemoveId(id)
+        window.setTimeout(() => {
+          setPendingRemoveId((current) => (current === id ? null : current))
+        }, 3000)
+      }
+
+      async function addMark() {
+        if (doc === null || selection === null || source !== 'pdf') return
+        const groups = selectionBoxes()
+        if (groups.length === 0) return
+        setNotesBusy(true)
+        try {
+          let items = marks
+          for (const group of groups.slice(0, 8)) {
+            const item = {
+              id: newMarkId(),
+              page: group.page,
+              boxes: group.boxes,
+              text: (selection.text || '').slice(0, 4000),
+              note: '',
+              color: markColor,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            }
+            const value = await postJson('/annotations', { docId: doc.id, op: 'add', item })
+            if (Array.isArray(value?.items)) items = value.items
+          }
+          setMarks(items)
+          setSelection(null)
+          const windowSelection = window.getSelection()
+          if (windowSelection !== null) windowSelection.removeAllRanges()
+          notify(tx('toast.highlighted'))
+        } catch (error) {
+          showError(tx('error.mark', { message: error instanceof Error ? error.message : String(error) }))
+        } finally {
+          setNotesBusy(false)
+        }
+      }
+
+      async function saveNote() {
+        if (doc === null || activeMarkId === null) return
+        setNotesBusy(true)
+        try {
+          const value = await postJson('/annotations', {
+            docId: doc.id,
+            op: 'update',
+            id: activeMarkId,
+            patch: { note: noteDraft, color: markColor },
+          })
+          if (Array.isArray(value?.items)) setMarks(value.items)
+          setActiveMarkId(null)
+          notify(tx('toast.markSaved'))
+        } catch (error) {
+          showError(tx('error.mark', { message: error instanceof Error ? error.message : String(error) }))
+        } finally {
+          setNotesBusy(false)
+        }
+      }
+
+      async function deleteMark(id) {
+        if (doc === null) return
+        setNotesBusy(true)
+        try {
+          const value = await postJson('/annotations', { docId: doc.id, op: 'remove', id })
+          if (Array.isArray(value?.items)) setMarks(value.items)
+          if (activeMarkId === id) setActiveMarkId(null)
+        } catch (error) {
+          showError(tx('error.mark', { message: error instanceof Error ? error.message : String(error) }))
+        } finally {
+          setNotesBusy(false)
+        }
+      }
+
+      const marksByPage = React.useMemo(() => {
+        const map = new Map()
+        for (const mark of marks) {
+          if (mark === null || typeof mark !== 'object' || !Number.isInteger(mark.page)) continue
+          const list = map.get(mark.page) ?? []
+          list.push(mark)
+          map.set(mark.page, list)
+        }
+        return map
+      }, [marks])
+
+      const activeMark = React.useMemo(
+        () => marks.find((mark) => mark.id === activeMarkId) ?? null,
+        [marks, activeMarkId],
+      )
+
       function cycleMatch(direction) {
         if (search === null || !Array.isArray(search.pages) || search.pages.length === 0) return
         const next = (search.index + direction + search.pages.length) % search.pages.length
         setSearch({ ...search, index: next })
         goToPage(search.pages[next].page)
+      }
+
+      function sendWebFind(query, index) {
+        const frame = webFrameRef.current
+        if (frame === null || frame.contentWindow === null) return
+        frame.contentWindow.postMessage({ __dshDeepreadCmd: 1, kind: 'find', query, index }, '*')
+      }
+
+      function cycleWebFind(direction) {
+        if (webFind.total <= 0) return
+        const next = (webFind.index + direction + webFind.total) % webFind.total
+        setWebFind((current) => ({ ...current, index: next }))
+        sendWebFind(webFindQuery, next)
       }
 
       async function openFile(file) {
@@ -2305,6 +2667,47 @@ window.__ModuleLoader__.load({
               onClick: () => setWebZoom((value) => Math.min(2, Math.round((value + 0.1) * 10) / 10)),
             }, h(PlusIcon, {})),
           ]),
+          source === 'web' && webMode === 'read' && webUrl !== '' && h('div', { key: 'webfind', className: 'dr-group' }, [
+            h('div', { key: 'wrap', style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } }, [
+              h(SearchIcon, { size: 14, key: 'icon', style: { position: 'absolute', left: 8, color: 'var(--dsw-alias-label-secondary)', pointerEvents: 'none' } }),
+              h('input', {
+                key: 'input',
+                className: 'dr-input dr-search-input',
+                value: webFindQuery,
+                placeholder: tx('webfind.placeholder'),
+                'aria-label': tx('webfind.placeholder'),
+                style: { paddingLeft: 27 },
+                onChange: (event) => setWebFindQuery(event.target.value),
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    cycleWebFind(event.shiftKey ? -1 : 1)
+                  }
+                  if (event.key === 'Escape') {
+                    setWebFindQuery('')
+                    sendWebFind('', 0)
+                  }
+                },
+              }),
+            ]),
+            webFindQuery.trim() !== '' && h('span', { key: 'count', className: 'dr-match-count' }, webFind.total > 0 ? tx('toolbar.matches', { count: webFind.total }) : tx('toolbar.noMatches')),
+            webFind.total > 0 && h('button', {
+              key: 'prev',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('toolbar.previous'),
+              'aria-label': tx('toolbar.previous'),
+              onClick: () => cycleWebFind(-1),
+            }, h(ChevronIcon, { direction: 'up' })),
+            webFind.total > 0 && h('button', {
+              key: 'next',
+              type: 'button',
+              className: 'dr-btn dr-icon',
+              title: tx('toolbar.next'),
+              'aria-label': tx('toolbar.next'),
+              onClick: () => cycleWebFind(1),
+            }, h(ChevronIcon, { direction: 'down' })),
+          ]),
           source === 'pdf' && doc !== null && h('div', { key: 'pager', className: 'dr-group' }, [
             h('input', {
               key: 'page',
@@ -2438,6 +2841,39 @@ window.__ModuleLoader__.load({
             outline.state === 'loading' && h('span', { key: 's', className: 'dr-spinner' }),
             outline.state === 'ready' && outline.rows.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(outline.rows.length)),
           ]),
+          source === 'pdf' && doc !== null && h('button', {
+            key: 'notes',
+            type: 'button',
+            className: 'dr-btn',
+            title: tx('notes.open'),
+            'aria-label': tx('notes.open'),
+            'aria-expanded': notesOpen,
+            onClick: () => setNotesOpen((value) => !value),
+            style: notesOpen
+              ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
+              : undefined,
+          }, [
+            h(MarkerIcon, { key: 'i' }),
+            tx('notes.open'),
+            marks.length > 0 && h('span', { key: 'n', className: 'dr-match-count' }, String(marks.length)),
+          ]),
+          h('button', {
+            key: 'docs',
+            type: 'button',
+            className: 'dr-btn',
+            title: tx('docs.open'),
+            'aria-label': tx('docs.open'),
+            'aria-expanded': docsOpen,
+            onClick: () => {
+              setDocsOpen((value) => {
+                if (!value) void refreshDocuments()
+                return !value
+              })
+            },
+            style: docsOpen
+              ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
+              : undefined,
+          }, [h(BookIcon, { key: 'i' }), tx('docs.open')]),
           hasSession && h('button', {
             key: 'panel',
             type: 'button',
@@ -2534,6 +2970,7 @@ window.__ModuleLoader__.load({
                   pageNumber: index + 1,
                   page,
                   highlight: search?.query ?? '',
+                  marks: marksByPage.get(index + 1) ?? EMPTY_MARKS,
                 }))),
             busy !== '' && h('div', {
               key: 'busy',
@@ -2628,6 +3065,13 @@ window.__ModuleLoader__.load({
                 onClick: () => copySelection(),
               }, [h(CopyIcon, { key: 'i' }), tx('selection.copy')]),
               h('button', {
+                key: 'mark',
+                type: 'button',
+                className: 'dr-btn',
+                onClick: () => { void addMark() },
+                disabled: notesBusy || source !== 'pdf',
+              }, [h(MarkerIcon, { key: 'i' }), tx('selection.highlight')]),
+              h('button', {
                 key: 'search',
                 type: 'button',
                 className: 'dr-btn',
@@ -2649,6 +3093,157 @@ window.__ModuleLoader__.load({
                 'aria-label': tx('selection.close'),
                 onClick: () => setSelection(null),
               }, h(CloseIcon, {})),
+            ]),
+            docsOpen && h('div', {
+              key: 'documents',
+              className: 'dr-toc dr-docs',
+              onKeyDown: (event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  setDocsOpen(false)
+                }
+              },
+            }, [
+              h('div', { key: 'head', className: 'dr-toc-head' }, [
+                h('span', { key: 'title', className: 'dr-toc-title' }, tx('docs.title')),
+                docs.length > 0 && h('span', { key: 'count', className: 'dr-toc-count' }, String(docs.length)),
+                h('button', {
+                  key: 'close',
+                  type: 'button',
+                  className: 'dr-btn dr-icon',
+                  title: tx('notes.close'),
+                  'aria-label': tx('notes.close'),
+                  onClick: () => setDocsOpen(false),
+                }, h(CloseIcon, {})),
+              ]),
+              h('div', { key: 'body', className: 'dr-toc-body' },
+                docsBusy
+                  ? h('div', { key: 'busy', className: 'dr-toc-note' }, h('span', { className: 'dr-spinner' }))
+                  : docs.length === 0
+                    ? h('p', { key: 'empty', className: 'dr-toc-note' }, tx('docs.empty'))
+                    : docs.map((row) => h('div', {
+                      key: row.id,
+                      className: `dr-doc-row${doc !== null && doc.id === row.id ? ' dr-active' : ''}`,
+                    }, [
+                      h('button', {
+                        key: 'open',
+                        type: 'button',
+                        className: 'dr-doc-open',
+                        title: row.name,
+                        onClick: () => { void openDocumentById(row.id) },
+                      }, [
+                        h('span', { key: 't', className: 'dr-doc-title' }, row.title || row.name),
+                        h('span', { key: 'm', className: 'dr-doc-meta' }, `${tx('docs.pages', { count: row.pages })} · ${row.name}`),
+                      ]),
+                      h('button', {
+                        key: 'del',
+                        type: 'button',
+                        className: `dr-btn dr-note-action${pendingRemoveId === row.id ? ' dr-bad' : ''}`,
+                        'aria-label': tx('docs.remove'),
+                        onClick: () => requestRemoveDocument(row.id),
+                      }, pendingRemoveId === row.id ? tx('docs.confirm') : tx('docs.remove')),
+                    ]))),
+            ]),
+            notesOpen && source === 'pdf' && doc !== null && h('div', {
+              key: 'notes',
+              className: 'dr-toc dr-notes',
+              onKeyDown: (event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation()
+                  setNotesOpen(false)
+                  setActiveMarkId(null)
+                }
+              },
+            }, [
+              h('div', { key: 'head', className: 'dr-toc-head' }, [
+                h('span', { key: 'title', className: 'dr-toc-title' }, tx('notes.title')),
+                marks.length > 0 && h('span', { key: 'count', className: 'dr-toc-count' }, tx('notes.count', { count: marks.length })),
+                h('button', {
+                  key: 'close',
+                  type: 'button',
+                  className: 'dr-btn dr-icon',
+                  title: tx('notes.close'),
+                  'aria-label': tx('notes.close'),
+                  onClick: () => { setNotesOpen(false); setActiveMarkId(null) },
+                }, h(CloseIcon, {})),
+              ]),
+              h('div', { key: 'body', className: 'dr-toc-body' },
+                marks.length === 0
+                  ? h('p', { key: 'empty', className: 'dr-toc-note' }, tx('notes.empty'))
+                  : marks.map((mark) => h('div', {
+                    key: mark.id,
+                    className: `dr-note-row${activeMarkId === mark.id ? ' dr-active' : ''}`,
+                  }, [
+                    h('button', {
+                      key: 'jump',
+                      type: 'button',
+                      className: 'dr-note-jump',
+                      title: tx('notes.jump', { page: mark.page }),
+                      onClick: () => goToPage(mark.page),
+                    }, [
+                      h('span', { key: 'p', className: 'dr-note-page' }, `p.${mark.page}`),
+                      h('span', { key: 't', className: 'dr-note-text' }, typeof mark.text === 'string' ? mark.text : ''),
+                    ]),
+                    h('span', { key: 'dot', className: 'dr-note-dot', 'data-color': mark.color, 'aria-hidden': true }),
+                    h('button', {
+                      key: 'note',
+                      type: 'button',
+                      className: 'dr-btn dr-note-action',
+                      onClick: () => {
+                        setActiveMarkId(mark.id)
+                        setNoteDraft(typeof mark.note === 'string' ? mark.note : '')
+                        setMarkColor(mark.color || 'yellow')
+                      },
+                    }, tx('notes.edit')),
+                    h('button', {
+                      key: 'del',
+                      type: 'button',
+                      className: 'dr-btn dr-note-action',
+                      onClick: () => { void deleteMark(mark.id) },
+                    }, tx('notes.delete')),
+                  ]))),
+              activeMark !== null && h('div', { key: 'editor', className: 'dr-note-editor' }, [
+                h('div', { key: 'colors', className: 'dr-note-colors', role: 'group', 'aria-label': tx('notes.colour') },
+                  ['yellow', 'green', 'blue', 'pink', 'purple'].map((color) => h('button', {
+                    key: color,
+                    type: 'button',
+                    className: `dr-note-swatch${markColor === color ? ' dr-active' : ''}`,
+                    'data-color': color,
+                    title: color,
+                    'aria-label': color,
+                    onClick: () => setMarkColor(color),
+                  }))),
+                h('textarea', {
+                  key: 'text',
+                  className: 'dr-input dr-note-input',
+                  value: noteDraft,
+                  placeholder: tx('notes.placeholder'),
+                  rows: 3,
+                  onChange: (event) => setNoteDraft(event.target.value),
+                }),
+                h('div', { key: 'actions', className: 'dr-note-actions' }, [
+                  h('button', {
+                    key: 'save',
+                    type: 'button',
+                    className: 'dr-btn dr-primary',
+                    disabled: notesBusy,
+                    onClick: () => { void saveNote() },
+                  }, tx('notes.save')),
+                  h('button', {
+                    key: 'del',
+                    type: 'button',
+                    className: 'dr-btn',
+                    disabled: notesBusy,
+                    onClick: () => { void deleteMark(activeMark.id) },
+                  }, tx('notes.delete')),
+                  h('button', {
+                    key: 'close',
+                    type: 'button',
+                    className: 'dr-btn',
+                    onClick: () => setActiveMarkId(null),
+                  }, tx('notes.close')),
+                ]),
+              ]),
             ]),
             tocOpen && source === 'pdf' && doc !== null && h('div', {
               key: 'toc',
