@@ -889,7 +889,19 @@ window.__ModuleLoader__.load({
       let lastLine = null
       let previous = null
       const cjk = /[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]/
-      const words = container.querySelectorAll('.dr-word')
+      // Only the pages the range touches: a long book holds tens of thousands
+      // of word nodes, and testing every one of them is what made selection
+      // capture slow.
+      const words = []
+      for (const page of container.querySelectorAll('.dr-page')) {
+        let inPage = false
+        try {
+          inPage = range.intersectsNode(page)
+        } catch {
+          inPage = false
+        }
+        if (inPage) words.push(...page.querySelectorAll('.dr-word'))
+      }
       for (const word of words) {
         let hit = false
         try {
@@ -2222,29 +2234,33 @@ window.__ModuleLoader__.load({
         if (windowSelection === null || windowSelection.rangeCount === 0 || windowSelection.isCollapsed) return []
         const range = windowSelection.getRangeAt(0)
         const byPage = new Map()
-        for (const word of container.querySelectorAll('.dr-word')) {
-          let hit = false
+        // Only the pages the range touches: walking every word of a long book
+        // is what made highlighting slow.
+        for (const pageElement of container.querySelectorAll('.dr-page')) {
+          let inPage = false
           try {
-            hit = range.intersectsNode(word)
+            inPage = range.intersectsNode(pageElement)
           } catch {
-            hit = false
+            inPage = false
           }
-          if (!hit) continue
-          const pageElement = word.closest('.dr-page')
-          const page = Number(word.dataset.page)
-          if (pageElement === null || !Number.isInteger(page) || page < 1) continue
-          const wordRect = word.getBoundingClientRect()
+          if (!inPage) continue
           const pageRect = pageElement.getBoundingClientRect()
-          if (pageRect.width <= 0 || pageRect.height <= 0 || wordRect.width <= 0 || wordRect.height <= 0) continue
-          const entry = byPage.get(page) ?? { page, boxes: [] }
-          if (entry.boxes.length >= 400) continue
-          entry.boxes.push({
-            x: Math.max(0, Math.min(1, (wordRect.left - pageRect.left) / pageRect.width)),
-            y: Math.max(0, Math.min(1, (wordRect.top - pageRect.top) / pageRect.height)),
-            w: Math.max(0.001, Math.min(1, wordRect.width / pageRect.width)),
-            h: Math.max(0.001, Math.min(1, wordRect.height / pageRect.height)),
-          })
-          byPage.set(page, entry)
+          if (pageRect.width <= 0 || pageRect.height <= 0) continue
+          for (const word of pageElement.querySelectorAll('.dr-word')) {
+            const page = Number(word.dataset.page)
+            if (!Number.isInteger(page) || page < 1) continue
+            const wordRect = word.getBoundingClientRect()
+            if (wordRect.width <= 0 || wordRect.height <= 0) continue
+            const entry = byPage.get(page) ?? { page, boxes: [] }
+            if (entry.boxes.length >= 400) continue
+            entry.boxes.push({
+              x: Math.max(0, Math.min(1, (wordRect.left - pageRect.left) / pageRect.width)),
+              y: Math.max(0, Math.min(1, (wordRect.top - pageRect.top) / pageRect.height)),
+              w: Math.max(0.001, Math.min(1, wordRect.width / pageRect.width)),
+              h: Math.max(0.001, Math.min(1, wordRect.height / pageRect.height)),
+            })
+            byPage.set(page, entry)
+          }
         }
         return [...byPage.values()]
       }

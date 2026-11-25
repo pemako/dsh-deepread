@@ -112,6 +112,9 @@ function run(argv) {
 
 const DOC_ID = /^[a-f0-9]{24}$/
 const IMAGE_CACHE_LIMIT = 24
+const IMAGE_CACHE_BYTES = 48 * 1024 * 1024
+const TEXT_CACHE_LIMIT = 8
+const WORDS_CACHE_LIMIT = 64
 
 export const inject = ['webServer', 'web', 'agents']
 
@@ -180,7 +183,7 @@ function httpError(status, message) {
   return error
 }
 
-function sendJson(res, status, value) {
+function sendJson(res, status, value, headOnly = false) {
   const body = JSON.stringify(value)
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -188,17 +191,17 @@ function sendJson(res, status, value) {
     'cache-control': 'no-store',
     'x-content-type-options': 'nosniff',
   })
-  res.end(body)
+  res.end(headOnly ? undefined : body)
 }
 
-function sendPng(res, bytes) {
+function sendPng(res, bytes, headOnly = false) {
   res.writeHead(200, {
     'content-type': 'image/png',
     'content-length': bytes.length,
     'cache-control': 'private, max-age=3600',
     'x-content-type-options': 'nosniff',
   })
-  res.end(bytes)
+  res.end(headOnly ? undefined : bytes)
 }
 
 function readJson(req) {
@@ -939,10 +942,15 @@ export function apply(ctx) {
   const temp = join(root, 'tmp')
   const notes = join(root, 'notes')
 
-  /** Parsed document text, kept hot while a reader is open. */
+  /** Page index (dimensions and text) kept hot; word boxes live per page. */
   const textCache = new Map()
-  /** Rendered page bytes, bounded so a long read does not grow without limit. */
+  const textLoads = new Map()
+  /** Word boxes for the pages being read, bounded by page count. */
+  const wordsCache = new Map()
+  const wordLoads = new Map()
+  /** Rendered page bytes, bounded by count and total size. */
   const imageCache = new Map()
+  let imageCacheBytes = 0
   /** In-flight page renders, so two scroll events share one Poppler run. */
   const renders = new Map()
   /** Document metadata, including the original display name. */
@@ -1022,17 +1030,82 @@ export function apply(ctx) {
     text: join(texts, `${id}.json`),
     meta: join(texts, `${id}.meta.json`),
     outline: join(texts, `${id}.outline.json`),
+    wordsDir: join(texts, `${id}.words`),
     pageDir: join(pages, id),
   })
 
+  function wordsPath(id, page) {
+    return join(paths(id).wordsDir, `${page}.json`)
+  }
+
+  function rememberText(id, index) {
+    while (textCache.size >= TEXT_CACHE_LIMIT) textCache.delete(textCache.keys().next().value)
+    textCache.set(id, index)
+  }
+
+  /**
+   * Read a document's page index: dimensions and text only, since the word
+   * boxes live per page.
+   * @param id - the content-addressed document id.
+   * @returns one { width, height, text } record per page.
+   */
   async function loadText(id) {
     const hit = textCache.get(id)
     if (hit !== undefined) return hit
-    await dirsReady
-    const parsed = JSON.parse(await readFile(paths(id).text, 'utf8'))
-    if (textCache.size >= 4) textCache.delete(textCache.keys().next().value)
-    textCache.set(id, parsed)
-    return parsed
+    const pending = textLoads.get(id)
+    if (pending !== undefined) return pending
+    const work = (async () => {
+      await dirsReady
+      const parsed = JSON.parse(await readFile(paths(id).text, 'utf8'))
+      const pages = Array.isArray(parsed) ? parsed : []
+      const index = []
+      for (const page of pages) {
+        if (page === null || typeof page !== 'object') continue
+        index.push({
+          width: Number(page.width) > 0 ? Number(page.width) : 612,
+          height: Number(page.height) > 0 ? Number(page.height) : 792,
+          text: typeof page.text === 'string' ? page.text : '',
+        })
+      }
+      rememberText(id, index)
+      return index
+    })().finally(() => textLoads.delete(id))
+    textLoads.set(id, work)
+    return work
+  }
+
+  function rememberWords(key, words) {
+    while (wordsCache.size >= WORDS_CACHE_LIMIT) wordsCache.delete(wordsCache.keys().next().value)
+    wordsCache.set(key, words)
+  }
+
+  /**
+   * Read one page's word boxes, keeping the pages being read in memory and the
+   * rest on disk.
+   * @param id - the document id.
+   * @param page - the one-based page number.
+   * @returns the page's boxes, or an empty list when the page has no text layer.
+   */
+  async function loadPageWords(id, page) {
+    const key = `${id}:${page}`
+    const hit = wordsCache.get(key)
+    if (hit !== undefined) return hit
+    const pending = wordLoads.get(key)
+    if (pending !== undefined) return pending
+    const work = (async () => {
+      await dirsReady
+      try {
+        const words = JSON.parse(await readFile(wordsPath(id, page), 'utf8'))
+        if (!Array.isArray(words)) return []
+        rememberWords(key, words)
+        return words
+      } catch (error) {
+        if (error?.code !== 'ENOENT') ctx.logger?.warn?.(error)
+        return []
+      }
+    })().finally(() => wordLoads.delete(key))
+    wordLoads.set(key, work)
+    return work
   }
 
   async function loadMeta(id) {
@@ -1043,6 +1116,31 @@ export function apply(ctx) {
     if (metaCache.size >= 16) metaCache.delete(metaCache.keys().next().value)
     metaCache.set(id, meta)
     return meta
+  }
+
+  /**
+   * Drop temporary files left behind by interrupted work: uploads that never
+   * landed and page renders that were cancelled. Only files older than a day
+   * are removed, so a render in flight is never touched.
+   * @param maxAge - how old a temporary file must be, in milliseconds.
+   */
+  async function pruneTemp(maxAge = 24 * 60 * 60 * 1000) {
+    await dirsReady
+    let names = []
+    try {
+      names = await readdir(temp)
+    } catch {
+      return
+    }
+    const now = Date.now()
+    for (const name of names) {
+      try {
+        const info = await stat(join(temp, name))
+        if (info.isFile() && now - info.mtimeMs > maxAge) await rm(join(temp, name), { force: true })
+      } catch {
+        // Another process may have taken it already.
+      }
+    }
   }
 
   /**
@@ -1059,6 +1157,13 @@ export function apply(ctx) {
       if (!Array.isArray(documentPages) || documentPages.length === 0) return undefined
       if (!Number.isInteger(metaValue?.pages) || metaValue.pages < 1) return undefined
       if (documentPages.length < metaValue.pages) return undefined
+      // A document stored before per-page word files existed has no words
+      // directory; rebuild it once instead of serving pages without a text layer.
+      try {
+        await stat(paths(id).wordsDir)
+      } catch {
+        return undefined
+      }
       metaValue.name = name
       metaValue.openedAt = Date.now()
       await dirsReady
@@ -1225,9 +1330,23 @@ export function apply(ctx) {
       pages: parsed.pages,
       openedAt: Date.now(),
     }
-    await writeFile(text, JSON.stringify(documentPages), 'utf8')
+    const index = documentPages.map((page) => ({
+      width: page.width,
+      height: page.height,
+      text: page.text,
+    }))
+    await mkdir(paths(id).wordsDir, { recursive: true })
+    await writeFile(text, JSON.stringify(index), 'utf8')
     await writeFile(meta, JSON.stringify(metaValue), 'utf8')
-    textCache.set(id, documentPages)
+    for (let start = 0; start < documentPages.length; start += 16) {
+      const batch = documentPages.slice(start, start + 16)
+      await Promise.all(batch.map((page, offset) => (
+        page.words.length > 0
+          ? writeFile(wordsPath(id, start + offset + 1), JSON.stringify(page.words), 'utf8')
+          : undefined
+      )))
+    }
+    rememberText(id, index)
     metaCache.set(id, metaValue)
     return { meta: metaValue, documentPages }
   }
@@ -1245,6 +1364,8 @@ export function apply(ctx) {
       })),
     }
   }
+
+  void pruneTemp().catch(() => {})
 
   const renderSlot = createLimiter(RENDER_CONCURRENCY)
 
@@ -1302,8 +1423,18 @@ export function apply(ctx) {
   }
 
   function rememberImage(key, bytes) {
-    if (imageCache.size >= IMAGE_CACHE_LIMIT) imageCache.delete(imageCache.keys().next().value)
+    while (imageCache.size >= IMAGE_CACHE_LIMIT) {
+      const oldest = imageCache.keys().next().value
+      imageCacheBytes -= imageCache.get(oldest)?.length ?? 0
+      imageCache.delete(oldest)
+    }
+    while (imageCacheBytes + bytes.length > IMAGE_CACHE_BYTES && imageCache.size > 0) {
+      const oldest = imageCache.keys().next().value
+      imageCacheBytes -= imageCache.get(oldest)?.length ?? 0
+      imageCache.delete(oldest)
+    }
     imageCache.set(key, bytes)
+    imageCacheBytes += bytes.length
   }
 
   async function ensureOutlineScript() {
@@ -1461,13 +1592,19 @@ export function apply(ctx) {
     await rm(target.meta, { force: true })
     await rm(target.outline, { force: true })
     await rm(target.pageDir, { recursive: true, force: true })
+    await rm(target.wordsDir, { recursive: true, force: true })
     await rm(notesPath(id), { force: true })
     textCache.delete(id)
     metaCache.delete(id)
     outlineCache.delete(id)
     notesCache.delete(id)
+    for (const key of [...wordsCache.keys()]) {
+      if (key.startsWith(`${id}:`)) wordsCache.delete(key)
+    }
     for (const key of [...imageCache.keys()]) {
-      if (key.startsWith(`${id}:`)) imageCache.delete(key)
+      if (!key.startsWith(`${id}:`)) continue
+      imageCacheBytes -= imageCache.get(key)?.length ?? 0
+      imageCache.delete(key)
     }
     await loadPositions()
     if (positions.delete(id)) await queuePositionWrite()
@@ -1711,6 +1848,7 @@ export function apply(ctx) {
       throw httpError(404, 'not found')
     }
 
+    const headOnly = req.method === 'HEAD'
     if (req.method === 'GET' || req.method === 'HEAD') {
       const docMatch = new RegExp(`^${ROUTE}/doc/([a-f0-9]{24})$`).exec(path)
       if (docMatch !== null) {
@@ -1718,7 +1856,7 @@ export function apply(ctx) {
         try {
           const meta = await loadMeta(id)
           const documentPages = await loadText(id)
-          sendJson(res, 200, documentPayload(meta, documentPages))
+          sendJson(res, 200, documentPayload(meta, documentPages), headOnly)
         } catch (error) {
           if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
           throw error
@@ -1727,10 +1865,21 @@ export function apply(ctx) {
       }
       const textMatch = new RegExp(`^${ROUTE}/text/([a-f0-9]{24})/(\\d{1,6})$`).exec(path)
       if (textMatch !== null) {
-        const documentPages = await loadText(textMatch[1])
+        const id = textMatch[1]
+        let documentPages
+        try {
+          documentPages = await loadText(id)
+        } catch (error) {
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          throw error
+        }
         const page = documentPages[Number(textMatch[2]) - 1]
         if (page === undefined) throw httpError(404, 'page not found')
-        sendJson(res, 200, { width: page.width, height: page.height, words: page.words })
+        sendJson(res, 200, {
+          width: page.width,
+          height: page.height,
+          words: await loadPageWords(id, Number(textMatch[2])),
+        }, headOnly)
         return
       }
       const pageMatch = new RegExp(`^${ROUTE}/page/([a-f0-9]{24})/(\\d{1,6})$`).exec(path)
@@ -1744,11 +1893,11 @@ export function apply(ctx) {
           if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
           throw error
         }
-        sendPng(res, await renderPage(id, number, clampDpi(url.searchParams.get('dpi'))))
+        sendPng(res, await renderPage(id, number, clampDpi(url.searchParams.get('dpi'))), headOnly)
         return
       }
       if (path === `${ROUTE}/documents`) {
-        sendJson(res, 200, { items: await listDocuments() })
+        sendJson(res, 200, { items: await listDocuments() }, headOnly)
         return
       }
       const annotationsMatch = new RegExp(`^${ROUTE}/annotations/([a-f0-9]{24})$`).exec(path)
@@ -1760,7 +1909,7 @@ export function apply(ctx) {
           if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
           throw error
         }
-        sendJson(res, 200, { items: await loadAnnotations(id) })
+        sendJson(res, 200, { items: await loadAnnotations(id) }, headOnly)
         return
       }
       const positionMatch = new RegExp(`^${ROUTE}/position/([a-f0-9]{24})$`).exec(path)
@@ -1773,7 +1922,7 @@ export function apply(ctx) {
           throw error
         }
         await loadPositions()
-        sendJson(res, 200, { position: positions.get(id) ?? null })
+        sendJson(res, 200, { position: positions.get(id) ?? null }, headOnly)
         return
       }
       const outlineMatch = new RegExp(`^${ROUTE}/outline/([a-f0-9]{24})$`).exec(path)
@@ -1785,17 +1934,17 @@ export function apply(ctx) {
           if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
           throw error
         }
-        sendJson(res, 200, await loadOutline(id))
+        sendJson(res, 200, await loadOutline(id), headOnly)
         return
       }
       const searchMatch = new RegExp(`^${ROUTE}/search/([a-f0-9]{24})$`).exec(path)
       if (searchMatch !== null) {
         const query = url.searchParams.get('q') ?? ''
         if (query.trim() === '') {
-          sendJson(res, 200, { query, total: 0, pages: [] })
+          sendJson(res, 200, { query, total: 0, pages: [] }, headOnly)
           return
         }
-        sendJson(res, 200, await searchDocument(searchMatch[1], query))
+        sendJson(res, 200, await searchDocument(searchMatch[1], query), headOnly)
         return
       }
     }

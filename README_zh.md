@@ -60,7 +60,7 @@ Plugins → Add plugin 里填：
 
 `client.js` 是浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖的左右/上下分栏、PDF 图片和文字层、目录树、复制/搜索/提问、PDF 和网页的来源切换、网页工具栏和桥消息、右栏整块收起（`dsh.deepread.readeronly`），还有通过 `conversation.content` Factory 渲染的真实会话。终端用内置终端包的 `TerminalBody` 和 xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，contentId 由 `dsh.deepread.termgen.<sessionId>` 里的 generation 决定。插件不调 `ctx.sidebarRight` 的方法，所以不会去开会话右侧栏。终端帧的订阅放在终端内容组件里，外层不会每一帧都重渲染；PDF 页面用 `content-visibility: auto` 跳过屏幕外的绘制。侧栏图标的 pointerdown 只用 `mainView` 保留当前会话，不再预建 terminal tab。
 
-状态目录是 `$DSH_HOME/deepread/`，里面有 `docs/`、`text/`、`pages/`、`notes/`、`tmp/`；书籍目录缓存在 `text/<id>.outline.json`，脚本在 `text/outline.jxa`，高亮和笔记在 `notes/<id>.json`，阅读位置在 `positions.json`。
+状态目录是 `$DSH_HOME/deepread/`，里面有 `docs/`、`text/`、`pages/`、`notes/`、`tmp/`。每份文档的页索引在 `text/<id>.json`，词框按页放在 `text/<id>.words/` 里；书籍目录缓存在 `text/<id>.outline.json`，脚本在 `text/outline.jxa`，高亮和笔记在 `notes/<id>.json`，阅读位置在 `positions.json`。
 
 ## 限制
 

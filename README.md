@@ -60,7 +60,7 @@ Links and GET search forms go back to the panel, which proxies them again, so th
 
 `client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, PDF images and the text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
 
-State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, `notes/`, and `tmp/`, with book outlines cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
+State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, `notes/`, and `tmp/`. A document keeps its page index in `text/<id>.json` and its word boxes under `text/<id>.words/`, one file per page; book outlines are cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
 
 ## Limits
 
