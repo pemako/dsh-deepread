@@ -1,9 +1,8 @@
 {
-  "name": "@local/dsh-deepread",
-  "version": "1.2.0",
-  "private": true,
-  "type": "module",
+  "name": "@pemako/dsh-deepread",
+  "version": "0.1.0",
   "description": "Read a PDF or a web page beside the live conversation, with bookmarks, a split chat/terminal pane, and selection search.",
+  "type": "module",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -35,5 +34,23 @@
         "@deepseek-ai/dsh-client-ui-sidebar-terminal"
       ]
     }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "pdf-reader",
+    "web-reader"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pemako/dsh-deepread.git"
+  },
+  "homepage": "https://github.com/pemako/dsh-deepread#readme",
+  "bugs": "https://github.com/pemako/dsh-deepread/issues",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

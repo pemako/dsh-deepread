@@ -3,6 +3,17 @@
 一个带左侧栏入口的 DSH Web 插件：左边读 PDF **或网页**，右边是当前会话本身。
 工具栏顶部的「PDF / 网页」开关切换左侧读什么，右侧的对话、终端和底部选区栏都不变。
 
+## 安装
+
+在 DSH 的 **Plugins → Add plugin** 里填入包名：
+
+```
+@pemako/dsh-deepread
+```
+
+也可以固定版本（例如 `@pemako/dsh-deepread@0.1.0`）。装好后左侧栏出现「深读」入口。
+PDF 解析用本机 Poppler（`pdfinfo`、`pdftotext`、`pdftoppm`），需要先装好。
+
 ## 使用
 
 1. 点左侧栏的「深读」图标（在 Plugins / Schedules 之后）。

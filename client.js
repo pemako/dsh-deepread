@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-deepread',
+  id: '@pemako/dsh-deepread',
   factory(require) {
     const React = require('react')
     const h = React.createElement
