@@ -11,6 +11,7 @@ let handler
 let origin = ''
 let server
 let home
+const asks = []
 
 before(async () => {
   home = await mkdtemp(join(tmpdir(), 'deepread-routes-'))
@@ -27,7 +28,11 @@ before(async () => {
   apply({
     webServer: { register: (options) => { handler = options.handler; return () => {} }, getOrigin: () => origin },
     web: { search: async () => ({ content: '', sources: [] }) },
-    agents: { get: () => undefined },
+    agents: {
+      get: (sessionId) => (sessionId === 'sess-1'
+        ? { id: 'sess-1', status: 'idle', followup: (message) => asks.push(message) }
+        : undefined),
+    },
     logger: { warn: () => {} },
     effect: (fn) => fn(),
   })
@@ -92,6 +97,35 @@ test('highlights are added, edited and removed', async () => {
 
   const removed = await (await postJson('/annotations', { docId, op: 'remove', id })).json()
   assert.equal(removed.items.length, 0)
+})
+
+test('host messages follow the interface language', async () => {
+  const missing = 'b'.repeat(24)
+  const english = await (await fetch(api(`/doc/${missing}`))).json()
+  assert.equal(english.error, 'Document not found')
+  assert.equal(english.code, 'document-not-found')
+
+  const chinese = await (await fetch(api(`/doc/${missing}`), { headers: { 'x-dsh-deepread-locale': 'zh-CN' } })).json()
+  assert.equal(chinese.error, '找不到这份文档')
+  assert.equal(chinese.code, 'document-not-found')
+})
+
+test('a selection is sent in the reader\'s language', async () => {
+  const ask = (locale) => fetch(api('/ask'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-dsh-deepread': '1', 'x-dsh-deepread-locale': locale },
+    body: JSON.stringify({ sessionId: 'sess-1', text: 'Hello world', source: 'pdf', question: '' }),
+  })
+
+  assert.equal((await ask('zh-CN')).status, 200)
+  const chinese = asks.at(-1).content[0].text
+  assert.match(chinese, /我最近在读一份 PDF/)
+  assert.match(chinese, /请解释这段内容/)
+
+  assert.equal((await ask('en')).status, 200)
+  const english = asks.at(-1).content[0].text
+  assert.match(english, /I am reading a PDF/)
+  assert.match(english, /Explain this passage/)
 })
 
 test('the page proxy refuses an internal target before fetching', async () => {

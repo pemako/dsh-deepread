@@ -149,7 +149,7 @@ async function runTool(name, args, options) {
     return await exec(await toolPath(name), args, options)
   } catch (error) {
     if (error?.code === 'ENOENT') {
-      throw httpError(501, 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm)')
+      throw httpError(501, 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm)', 'poppler-missing')
     }
     throw error
   }
@@ -177,9 +177,171 @@ export function createLimiter(limit) {
   }
 }
 
-function httpError(status, message) {
+/** JSON error copy, keyed by the code carried on the thrown error. */
+const ERROR_TEXT = {
+  en: {
+    'not-found': 'Not found',
+    'document-not-found': 'Document not found',
+    'invalid-document-id': 'Invalid document id',
+    'page-not-found': 'Page not found',
+    'page-too-large': 'This page is larger than the reader limit',
+    'body-not-object': 'Request body must be a JSON object',
+    'redirect-into-app': 'The page redirects into the application',
+    'too-many-redirects': 'The page redirected too many times',
+    'invalid-redirect': 'The page redirected to an invalid address',
+    'non-http-redirect': 'The page redirected to a non-http address',
+    'poppler-missing': 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm)',
+    'open-too-fast': 'Opening too quickly; wait a moment and try again',
+    'no-readable-pages': 'This PDF has no readable pages',
+    'encrypted-pdf': 'Password-protected PDFs are not supported',
+    'not-a-pdf': 'The uploaded file is not a PDF',
+    'selection-too-long': 'Selection is too long',
+    'body-too-large': 'Request body is too large',
+    'question-too-long': 'Question is too long',
+    'session-not-live': 'This session is not live; open it once before asking',
+    'highlight-not-found': 'Highlight not found',
+    'missing-request-header': 'Missing deepread request header',
+    'cross-origin': 'Cross-origin request refused',
+    'unknown-annotation-op': 'Unknown annotation operation',
+    'invalid-address': 'This is not a valid address',
+    'private-host': 'This host resolves to a private network address',
+    'private-address': 'This address points at a private network',
+    'app-origin': 'The application origin cannot be proxied',
+    'empty-selection': 'Selection is empty',
+    'body-not-json': 'Request body is not JSON',
+    'empty-query': 'Query is empty',
+    'non-http-scheme': 'Only http and https addresses can be opened',
+    'invalid-session': 'Invalid session id',
+    'invalid-position': 'Invalid reading position',
+    'invalid-highlight': 'Invalid highlight',
+    'credentials-refused': 'Addresses with embedded credentials are refused',
+    'address-required': 'A valid http(s) address is required',
+    'pdf-too-large': 'PDF is larger than {mb} MB',
+    'resolve-failed': 'Could not resolve {host}',
+    'browser-open-failed': 'Could not open the system browser: {message}',
+    'request-failed': 'DeepRead request failed',
+  },
+  zh: {
+    'not-found': '没有这个接口',
+    'document-not-found': '找不到这份文档',
+    'invalid-document-id': '文档 id 不合法',
+    'page-not-found': '找不到这一页',
+    'page-too-large': '页面超过阅读上限',
+    'body-not-object': '请求体必须是 JSON 对象',
+    'redirect-into-app': '页面重定向到了应用自身',
+    'too-many-redirects': '页面重定向次数过多',
+    'invalid-redirect': '页面重定向到了无效地址',
+    'non-http-redirect': '页面重定向到了非 http 地址',
+    'poppler-missing': '需要安装 Poppler（pdfinfo、pdftotext、pdftoppm）',
+    'open-too-fast': '打开太频繁，稍等一下再试',
+    'no-readable-pages': '这份 PDF 没有可读页面',
+    'encrypted-pdf': '不支持加密或需要密码的 PDF',
+    'not-a-pdf': '上传的文件不是 PDF',
+    'selection-too-long': '选段太长了',
+    'body-too-large': '请求体太大',
+    'question-too-long': '问题太长了',
+    'session-not-live': '这个会话不在线，先打开一次再提问',
+    'highlight-not-found': '找不到这条高亮',
+    'missing-request-header': '缺少深读请求头',
+    'cross-origin': '拒绝跨域请求',
+    'unknown-annotation-op': '未知的高亮操作',
+    'invalid-address': '这不是一个有效地址',
+    'private-host': '这个域名解析到内网地址，已拒绝',
+    'private-address': '这个地址指向内网，已拒绝',
+    'app-origin': '不能代理应用自身的地址',
+    'empty-selection': '选段是空的',
+    'body-not-json': '请求体不是 JSON',
+    'empty-query': '查询为空',
+    'non-http-scheme': '只能打开 http 或 https 地址',
+    'invalid-session': '会话 id 不合法',
+    'invalid-position': '阅读位置不合法',
+    'invalid-highlight': '高亮数据不合法',
+    'credentials-refused': '带账号密码的地址已拒绝',
+    'address-required': '需要提供一个有效的 http(s) 地址',
+    'pdf-too-large': 'PDF 超过 {mb} MB',
+    'resolve-failed': '无法解析 {host}',
+    'browser-open-failed': '无法打开系统浏览器：{message}',
+    'request-failed': '深读请求失败',
+  },
+}
+
+/** Copy for the HTML error page the reader shows inside the frame. */
+const PAGE_TEXT = {
+  en: {
+    loadFailed: 'This page could not be loaded',
+    loadFailedDetail: 'The reader could not reach it ({reason}). Check the address or the network, or open it in the system browser.',
+    notAllowed: 'This address is not allowed here',
+    showFailed: 'This page could not be shown here',
+    showFailedDetail: 'The reader stopped before the page could be shown.',
+    answered: 'The page answered {status}',
+    answeredDetail: 'The origin refused this request. It may need a signed-in browser session, or it may block automated reading. The system browser can open it directly.',
+    redirectIntoApp: 'This page redirects into the application',
+    redirectIntoAppDetail: 'The reader refuses to fetch the application itself through its proxy.',
+    alreadyReader: 'This page is already a reader page',
+    alreadyReaderDetail: 'The same document was requested through the reader again, so it was refused to avoid stacking two readers in one frame.',
+    openFailed: 'This page could not be opened',
+    openFailedDetail: 'DeepRead request failed',
+  },
+  zh: {
+    loadFailed: '这个页面打不开',
+    loadFailedDetail: '阅读器没能访问它（{reason}）。检查一下地址或网络，或者用系统浏览器打开。',
+    notAllowed: '这个地址不允许在这里打开',
+    showFailed: '这个页面没法在这里显示',
+    showFailedDetail: '阅读器在显示之前停下了。',
+    answered: '页面返回了 {status}',
+    answeredDetail: '原站拒绝了这个请求：可能需要登录，或者屏蔽了自动读取。可以用系统浏览器直接打开。',
+    redirectIntoApp: '这个页面会重定向到应用自身',
+    redirectIntoAppDetail: '阅读器不会通过代理去取应用自己。',
+    alreadyReader: '这已经是一个阅读页',
+    alreadyReaderDetail: '同一个文档又被通过阅读器请求了一次，为避免一帧里套两个阅读器，这次拒绝了。',
+    openFailed: '这个页面打不开',
+    openFailedDetail: '深读请求失败',
+  },
+}
+
+/** Copy for the message a selection turns into, in the reader's language. */
+const ASK_TEXT = {
+  en: {
+    whereTitle: 'the page “{title}”',
+    wherePage: 'a web page',
+    webMessage: 'I am reading {where}{source} and selected this passage:\n\n{quote}\n\n{instruction}',
+    pdfMessage: 'I am reading a PDF and selected this passage:\n\n{quote}\n\n{instruction}',
+    defaultInstruction: 'Explain this passage. Start with the gist, then name the key concepts or anything questionable.',
+  },
+  zh: {
+    whereTitle: '“{title}”',
+    wherePage: '一个网页',
+    webMessage: '我在读{where}{source}，选中了下面这段：\n\n{quote}\n\n{instruction}',
+    pdfMessage: '我最近在读一份 PDF，选中了下面这段：\n\n{quote}\n\n{instruction}',
+    defaultInstruction: '请解释这段内容，先概括要点，再指出关键概念或可疑之处。',
+  },
+}
+
+/** The language the browser asked for, from the per-request header. */
+function languageOf(req, url) {
+  const header = req?.headers?.['x-dsh-deepread-locale']
+  const query = url?.searchParams?.get('lang')
+  const raw = typeof header === 'string' && header !== '' ? header : query
+  if (typeof raw !== 'string' || !/^zh/i.test(raw.trim())) return 'en'
+  return 'zh'
+}
+
+/**
+ * Read one localized line, falling back to English and then to the caller's
+ * own sentence so an unknown code still answers something useful.
+ */
+function localized(table, lang, key, fallback, params) {
+  const entry = table[lang]?.[key] ?? table.en[key] ?? fallback
+  if (typeof entry !== 'string') return String(fallback ?? key)
+  if (params === undefined) return entry
+  return entry.replace(/\{(\w+)\}/g, (match, name) => String(params[name] ?? match))
+}
+
+function httpError(status, message, code, params) {
   const error = new Error(message)
   error.status = status
+  if (code !== undefined) error.code = code
+  if (params !== undefined) error.params = params
   return error
 }
 
@@ -211,7 +373,7 @@ function readJson(req) {
     req.on('data', (chunk) => {
       size += chunk.length
       if (size > MAX_JSON_BYTES) {
-        reject(httpError(413, 'request body is too large'))
+        reject(httpError(413, 'request body is too large', 'body-too-large'))
         req.destroy()
         return
       }
@@ -221,7 +383,7 @@ function readJson(req) {
       try {
         resolve(chunks.length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString('utf8')))
       } catch {
-        reject(httpError(400, 'request body is not JSON'))
+        reject(httpError(400, 'request body is not JSON', 'body-not-json'))
       }
     })
     req.on('error', reject)
@@ -310,22 +472,22 @@ function originOf(req, appOrigin) {
 /** Accept only a plain HTTP(S) address that is not the application itself. */
 export function normalizeTarget(raw, appOrigin) {
   if (typeof raw !== 'string' || raw.trim() === '' || raw.length > 2_048) {
-    throw httpError(400, 'a valid http(s) address is required')
+    throw httpError(400, 'a valid http(s) address is required', 'address-required')
   }
   let url
   try {
     url = new URL(raw.trim())
   } catch {
-    throw httpError(400, 'this is not a valid address')
+    throw httpError(400, 'this is not a valid address', 'invalid-address')
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw httpError(400, 'only http and https addresses can be opened')
+    throw httpError(400, 'only http and https addresses can be opened', 'non-http-scheme')
   }
   if (url.username !== '' || url.password !== '') {
-    throw httpError(400, 'addresses with embedded credentials are refused')
+    throw httpError(400, 'addresses with embedded credentials are refused', 'credentials-refused')
   }
   if (appOrigin !== undefined && isAppAddress(url, appOrigin)) {
-    throw httpError(400, 'the application origin cannot be proxied')
+    throw httpError(400, 'the application origin cannot be proxied', 'app-origin')
   }
   return url
 }
@@ -372,21 +534,21 @@ export function isBlockedIp(address) {
 async function assertInternalBlocked(url) {
   const host = url.hostname.replace(/^\[|\]$/g, '')
   if (isIP(host) !== 0) {
-    if (isBlockedIp(host)) throw httpError(400, 'this address points at a private network')
+    if (isBlockedIp(host)) throw httpError(400, 'this address points at a private network', 'private-address')
     return
   }
   let addresses
   try {
     addresses = await lookup(host, { all: true, verbatim: true })
   } catch {
-    throw httpError(502, `could not resolve ${host}`)
+    throw httpError(502, `could not resolve ${host}`, 'resolve-failed', { host })
   }
   if (!Array.isArray(addresses) || addresses.length === 0) {
-    throw httpError(502, `could not resolve ${host}`)
+    throw httpError(502, `could not resolve ${host}`, 'resolve-failed', { host })
   }
   for (const entry of addresses) {
     if (isBlockedIp(entry.address)) {
-      throw httpError(400, 'this host resolves to a private network address')
+      throw httpError(400, 'this host resolves to a private network address', 'private-host')
     }
   }
 }
@@ -701,7 +863,7 @@ const BRIDGE = String.raw`(() => {
 async function readCapped(response) {
   const declared = Number(response.headers.get('content-length'))
   if (Number.isFinite(declared) && declared > MAX_PAGE_BYTES) {
-    throw httpError(413, 'this page is larger than the reader limit')
+    throw httpError(413, 'this page is larger than the reader limit', 'page-too-large')
   }
   const body = response.body
   if (body === null) return Buffer.alloc(0)
@@ -716,7 +878,7 @@ async function readCapped(response) {
       size += value.byteLength
       if (size > MAX_PAGE_BYTES) {
         await reader.cancel().catch(() => {})
-        throw httpError(413, 'this page is larger than the reader limit')
+        throw httpError(413, 'this page is larger than the reader limit', 'page-too-large')
       }
       chunks.push(Buffer.from(value))
     }
@@ -760,20 +922,21 @@ async function fetchPage(start, appOrigin) {
     try {
       next = new URL(location, target.href)
     } catch {
-      throw httpError(502, 'the page redirected to an invalid address')
+      throw httpError(502, 'the page redirected to an invalid address', 'invalid-redirect')
     }
     if (next.protocol !== 'http:' && next.protocol !== 'https:') {
-      throw httpError(502, 'the page redirected to a non-http address')
+      throw httpError(502, 'the page redirected to a non-http address', 'non-http-redirect')
     }
     if (isAppAddress(next, appOrigin)) {
-      throw httpError(502, 'the page redirects into the application')
+      throw httpError(502, 'the page redirects into the application', 'redirect-into-app')
     }
     target = next
   }
-  throw httpError(502, 'the page redirected too many times')
+  throw httpError(502, 'the page redirected too many times', 'too-many-redirects')
 }
 
 async function handlePage(req, res, requestUrl, appOrigin) {
+  const lang = languageOf(req, requestUrl)
   const bridgeUrl = `${originOf(req, appOrigin)}${ROUTE}/bridge.js`
   const target = normalizeTarget(requestUrl.searchParams.get('url'), appOrigin)
   let response
@@ -784,12 +947,16 @@ async function handlePage(req, res, requestUrl, appOrigin) {
     finalUrl = page.finalUrl
   } catch (error) {
     const status = Number.isInteger(error?.status) ? error.status : 502
-    const reason = error instanceof Error ? error.message : String(error)
+    const reason = error?.code !== undefined
+      ? localized(ERROR_TEXT, lang, error.code, error.message, error.params)
+      : (error instanceof Error ? error.message : String(error))
     sendHtml(res, status, errorPageHtml(
-      status === 400 ? 'This address is not allowed here' : 'This page could not be loaded',
+      status === 400
+        ? localized(PAGE_TEXT, lang, 'notAllowed', 'This address is not allowed here')
+        : localized(PAGE_TEXT, lang, 'loadFailed', 'This page could not be loaded'),
       status === 400
         ? reason
-        : `The reader could not reach it (${reason}). Check the address or the network, or open it in the system browser.`,
+        : localized(PAGE_TEXT, lang, 'loadFailedDetail', 'The reader could not reach it ({reason}).', { reason }),
       target.href,
       bridgeUrl,
     ))
@@ -803,8 +970,10 @@ async function handlePage(req, res, requestUrl, appOrigin) {
   } catch (error) {
     const status = Number.isInteger(error?.status) ? error.status : 502
     sendHtml(res, status, errorPageHtml(
-      'This page could not be shown here',
-      error?.message ?? 'The reader stopped before the page could be shown.',
+      localized(PAGE_TEXT, lang, 'showFailed', 'This page could not be shown here'),
+      error?.code !== undefined
+        ? localized(ERROR_TEXT, lang, error.code, error.message, error.params)
+        : (error?.message ?? localized(PAGE_TEXT, lang, 'showFailedDetail', 'The reader stopped before the page could be shown.')),
       finalUrl,
       bridgeUrl,
     ))
@@ -819,8 +988,8 @@ async function handlePage(req, res, requestUrl, appOrigin) {
   if (!response.ok) {
     const status = response.status === 304 ? 502 : response.status
     sendHtml(res, status, errorPageHtml(
-      `The page answered ${response.status}`,
-      'The origin refused this request. It may need a signed-in browser session, or it may block automated reading. The system browser can open it directly.',
+      localized(PAGE_TEXT, lang, 'answered', 'The page answered {status}', { status: response.status }),
+      localized(PAGE_TEXT, lang, 'answeredDetail', 'The origin refused this request.'),
       finalUrl,
       bridgeUrl,
     ))
@@ -838,8 +1007,8 @@ async function handlePage(req, res, requestUrl, appOrigin) {
   const rewritten = rewriteHtml(html, finalUrl, bridgeUrl)
   if (rewritten === null) {
     sendHtml(res, 502, errorPageHtml(
-      'This page is already a reader page',
-      'The same document was requested through the reader again, so it was refused to avoid stacking two readers in one frame.',
+      localized(PAGE_TEXT, lang, 'alreadyReader', 'This page is already a reader page'),
+      localized(PAGE_TEXT, lang, 'alreadyReaderDetail', 'The same document was requested through the reader again.'),
       '',
       bridgeUrl,
     ))
@@ -1261,7 +1430,7 @@ export function apply(ctx) {
     try {
       for await (const chunk of req) {
         size += chunk.length
-        if (size > MAX_PDF_BYTES) throw httpError(413, `PDF is larger than ${Math.round(MAX_PDF_BYTES / 1024 / 1024)} MB`)
+        if (size > MAX_PDF_BYTES) throw httpError(413, `PDF is larger than ${Math.round(MAX_PDF_BYTES / 1024 / 1024)} MB`, 'pdf-too-large', { mb: Math.round(MAX_PDF_BYTES / 1024 / 1024) })
         hash.update(chunk)
         if (!output.write(chunk)) await once(output, 'drain')
       }
@@ -1271,7 +1440,7 @@ export function apply(ctx) {
       try {
         const head = Buffer.alloc(5)
         await handle.read(head, 0, 5, 0)
-        if (head.toString('latin1') !== '%PDF-') throw httpError(415, 'the uploaded file is not a PDF')
+        if (head.toString('latin1') !== '%PDF-') throw httpError(415, 'the uploaded file is not a PDF', 'not-a-pdf')
       } finally {
         await handle.close()
       }
@@ -1290,8 +1459,8 @@ export function apply(ctx) {
     const { pdf, text, meta } = paths(id)
     const info = await runTool('pdfinfo', [pdf], { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 })
     const parsed = parseInfo(info.stdout)
-    if (parsed.encrypted) throw httpError(422, 'password-protected PDFs are not supported')
-    if (parsed.pages === 0) throw httpError(422, 'this PDF has no readable pages')
+    if (parsed.encrypted) throw httpError(422, 'password-protected PDFs are not supported', 'encrypted-pdf')
+    if (parsed.pages === 0) throw httpError(422, 'this PDF has no readable pages', 'no-readable-pages')
 
     let documentPages = []
     try {
@@ -1584,7 +1753,7 @@ export function apply(ctx) {
    * @param id - the content-addressed document id.
    */
   async function removeDocument(id) {
-    if (!DOC_ID.test(id)) throw httpError(400, 'invalid document id')
+    if (!DOC_ID.test(id)) throw httpError(400, 'invalid document id', 'invalid-document-id')
     await dirsReady
     const target = paths(id)
     await rm(target.pdf, { force: true })
@@ -1610,25 +1779,26 @@ export function apply(ctx) {
     if (positions.delete(id)) await queuePositionWrite()
   }
 
-  async function handleAsk(body) {
+  async function handleAsk(body, lang = 'en') {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-      throw httpError(400, 'request body must be a JSON object')
+      throw httpError(400, 'request body must be a JSON object', 'body-not-object')
     }
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : ''
     const selection = typeof body.text === 'string' ? body.text : ''
     const question = plainLine(body.question, MAX_QUESTION + 1)
     const web = body.source === 'web'
-    if (!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) throw httpError(400, 'invalid session id')
-    if (selection.trim() === '') throw httpError(400, 'selection is empty')
-    if (selection.length > MAX_SELECTION) throw httpError(413, 'selection is too long')
-    if (question.length > MAX_QUESTION) throw httpError(413, 'question is too long')
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)) throw httpError(400, 'invalid session id', 'invalid-session')
+    if (selection.trim() === '') throw httpError(400, 'selection is empty', 'empty-selection')
+    if (selection.length > MAX_SELECTION) throw httpError(413, 'selection is too long', 'selection-too-long')
+    if (question.length > MAX_QUESTION) throw httpError(413, 'question is too long', 'question-too-long')
     const agent = ctx.agents.get(sessionId)
-    if (agent === undefined) throw httpError(409, 'this session is not live; open it once before asking')
+    if (agent === undefined) throw httpError(409, 'this session is not live; open it once before asking', 'session-not-live')
 
     // Quote the passage line by line, and keep a bare CR from escaping the quote.
     const excerpt = selection.replace(/\r\n?/g, '\n')
     const quote = `> ${excerpt.replace(/\n/g, '\n> ')}`
-    let instruction
+    const table = ASK_TEXT[lang] ?? ASK_TEXT.en
+    const instruction = question === '' ? table.defaultInstruction : question
     let message
     if (web) {
       const title = plainLine(body.title, 200)
@@ -1638,14 +1808,20 @@ export function apply(ctx) {
       } catch {
         source = ''
       }
-      const where = title === '' ? 'a web page' : `the page “${title}”`
-      instruction = question === ''
-        ? 'Explain this passage. Start with the gist, then name the key concepts or anything questionable.'
-        : question
-      message = `I am reading ${where}${source} and selected this passage:\n\n${quote}\n\n${instruction}`
+      const where = title === ''
+        ? table.wherePage
+        : table.whereTitle.replace('{title}', title)
+      // Function replacers keep a `$&` inside the page title or the passage
+      // from being read as a replacement pattern.
+      message = table.webMessage
+        .replace('{where}', () => where)
+        .replace('{source}', () => source)
+        .replace('{quote}', () => quote)
+        .replace('{instruction}', () => instruction)
     } else {
-      instruction = question === '' ? '请解释这段内容，先概括要点，再指出关键概念或可疑之处。' : question
-      message = `我最近在读一份 PDF，选中了下面这段：\n\n${quote}\n\n${instruction}`
+      message = table.pdfMessage
+        .replace('{quote}', () => quote)
+        .replace('{instruction}', () => instruction)
     }
     agent.followup({
       id: randomUUID(),
@@ -1664,20 +1840,20 @@ export function apply(ctx) {
    */
   async function handleAnnotations(body) {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-      throw httpError(400, 'request body must be a JSON object')
+      throw httpError(400, 'request body must be a JSON object', 'body-not-object')
     }
     const docId = typeof body.docId === 'string' ? body.docId : ''
-    if (!DOC_ID.test(docId)) throw httpError(400, 'invalid document id')
+    if (!DOC_ID.test(docId)) throw httpError(400, 'invalid document id', 'invalid-document-id')
     try {
       await loadMeta(docId)
     } catch (error) {
-      if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+      if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
       throw error
     }
     const items = await loadAnnotations(docId)
     if (body.op === 'add') {
       const item = sanitizeAnnotation(body.item)
-      if (item === undefined) throw httpError(400, 'invalid highlight')
+      if (item === undefined) throw httpError(400, 'invalid highlight', 'invalid-highlight')
       const next = [...items.filter((entry) => entry.id !== item.id), item].slice(-MAX_MARKS)
       await saveAnnotations(docId, next)
       return { items: next }
@@ -1685,7 +1861,7 @@ export function apply(ctx) {
     if (body.op === 'update') {
       const id = typeof body.id === 'string' ? body.id : ''
       const index = items.findIndex((entry) => entry.id === id)
-      if (index === -1) throw httpError(404, 'highlight not found')
+      if (index === -1) throw httpError(404, 'highlight not found', 'highlight-not-found')
       const current = items[index]
       const patch = body.patch !== null && typeof body.patch === 'object' && !Array.isArray(body.patch) ? body.patch : {}
       const nextItem = {
@@ -1704,12 +1880,12 @@ export function apply(ctx) {
       if (next.length !== items.length) await saveAnnotations(docId, next)
       return { items: next }
     }
-    throw httpError(400, 'unknown annotation operation')
+    throw httpError(400, 'unknown annotation operation', 'unknown-annotation-op')
   }
 
   async function handleWebSearch(body) {
     const query = typeof body.query === 'string' ? body.query.trim().slice(0, 500) : ''
-    if (query === '') throw httpError(400, 'query is empty')
+    if (query === '') throw httpError(400, 'query is empty', 'empty-query')
     try {
       const result = await ctx.web.search({ query, maxResults: 8 }, AbortSignal.timeout(20_000))
       return {
@@ -1732,7 +1908,7 @@ export function apply(ctx) {
     const target = normalizeTarget(body.url, appOrigin)
     const now = Date.now()
     if (now - openGate.at < OPEN_INTERVAL_MS) {
-      throw httpError(429, 'opening too quickly; wait a moment and try again')
+      throw httpError(429, 'opening too quickly; wait a moment and try again', 'open-too-fast')
     }
     openGate.at = now
     const platform = process.platform
@@ -1741,7 +1917,7 @@ export function apply(ctx) {
     try {
       await exec(command, args, { timeout: 10_000 })
     } catch (error) {
-      throw httpError(502, `could not open the system browser: ${error instanceof Error ? error.message : String(error)}`)
+      throw httpError(502, `could not open the system browser: ${error instanceof Error ? error.message : String(error)}`, 'browser-open-failed', { message: error instanceof Error ? error.message : String(error) })
     }
     return { ok: true, url: target.href }
   }
@@ -1750,7 +1926,7 @@ export function apply(ctx) {
     const origin = ctx.webServer.getOrigin()
     const url = new URL(req.url ?? '/', origin)
     const path = url.pathname
-    if (!path.startsWith(ROUTE)) throw httpError(404, 'not found')
+    if (!path.startsWith(ROUTE)) throw httpError(404, 'not found', 'not-found')
 
     const seenOrigin = req.headers.origin
     if (typeof seenOrigin === 'string') {
@@ -1763,12 +1939,12 @@ export function apply(ctx) {
           allowed = false
         }
       }
-      if (!allowed) throw httpError(403, 'cross-origin request refused')
+      if (!allowed) throw httpError(403, 'cross-origin request refused', 'cross-origin')
     }
 
     const isWrite = req.method === 'POST'
     if (isWrite && req.headers['x-dsh-deepread'] !== '1') {
-      throw httpError(403, 'missing deepread request header')
+      throw httpError(403, 'missing deepread request header', 'missing-request-header')
     }
 
     if (req.method === 'GET' && path === `${ROUTE}/bridge.js`) {
@@ -1813,7 +1989,7 @@ export function apply(ctx) {
         return
       }
       if (path === `${ROUTE}/ask`) {
-        sendJson(res, 200, await handleAsk(body))
+        sendJson(res, 200, await handleAsk(body, languageOf(req)))
         return
       }
       if (path === `${ROUTE}/open-page`) {
@@ -1832,20 +2008,20 @@ export function apply(ctx) {
       }
       if (path === `${ROUTE}/position`) {
         const id = typeof body.docId === 'string' ? body.docId : ''
-        if (!DOC_ID.test(id)) throw httpError(400, 'invalid document id')
+        if (!DOC_ID.test(id)) throw httpError(400, 'invalid document id', 'invalid-document-id')
         try {
           await loadMeta(id)
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         const position = normalizePosition(body)
-        if (position === undefined) throw httpError(400, 'invalid reading position')
+        if (position === undefined) throw httpError(400, 'invalid reading position', 'invalid-position')
         await savePosition(id, position)
         sendJson(res, 200, { ok: true })
         return
       }
-      throw httpError(404, 'not found')
+      throw httpError(404, 'not found', 'not-found')
     }
 
     const headOnly = req.method === 'HEAD'
@@ -1858,7 +2034,7 @@ export function apply(ctx) {
           const documentPages = await loadText(id)
           sendJson(res, 200, documentPayload(meta, documentPages), headOnly)
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         return
@@ -1870,11 +2046,11 @@ export function apply(ctx) {
         try {
           documentPages = await loadText(id)
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         const page = documentPages[Number(textMatch[2]) - 1]
-        if (page === undefined) throw httpError(404, 'page not found')
+        if (page === undefined) throw httpError(404, 'page not found', 'page-not-found')
         sendJson(res, 200, {
           width: page.width,
           height: page.height,
@@ -1888,9 +2064,9 @@ export function apply(ctx) {
         const number = Number(pageMatch[2])
         try {
           const meta = await loadMeta(id)
-          if (number < 1 || number > meta.pages) throw httpError(404, 'page not found')
+          if (number < 1 || number > meta.pages) throw httpError(404, 'page not found', 'page-not-found')
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         sendPng(res, await renderPage(id, number, clampDpi(url.searchParams.get('dpi'))), headOnly)
@@ -1906,7 +2082,7 @@ export function apply(ctx) {
         try {
           await loadMeta(id)
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         sendJson(res, 200, { items: await loadAnnotations(id) }, headOnly)
@@ -1918,7 +2094,7 @@ export function apply(ctx) {
         try {
           await loadMeta(id)
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         await loadPositions()
@@ -1931,7 +2107,7 @@ export function apply(ctx) {
         try {
           await loadMeta(id)
         } catch (error) {
-          if (error?.code === 'ENOENT') throw httpError(404, 'document not found')
+          if (error?.code === 'ENOENT') throw httpError(404, 'document not found', 'document-not-found')
           throw error
         }
         sendJson(res, 200, await loadOutline(id), headOnly)
@@ -1949,7 +2125,7 @@ export function apply(ctx) {
       }
     }
 
-    throw httpError(404, 'not found')
+    throw httpError(404, 'not found', 'not-found')
   }
 
   ctx.effect(() => ctx.webServer.register({
@@ -1957,8 +2133,13 @@ export function apply(ctx) {
     path: ROUTE,
     handler: (req, res) => {
       handle(req, res).catch((error) => {
+        const lang = languageOf(req)
         const status = Number.isInteger(error?.status) ? error.status : 500
-        const message = error?.status ? error.message : 'DeepRead request failed'
+        const message = error?.code !== undefined
+          ? localized(ERROR_TEXT, lang, error.code, error.message, error.params)
+          : error?.status
+            ? error.message
+            : localized(PAGE_TEXT, lang, 'openFailedDetail', 'DeepRead request failed')
         if (!error?.status) ctx.logger?.warn?.(error)
         if (res.headersSent) {
           res.destroy()
@@ -1967,14 +2148,14 @@ export function apply(ctx) {
         const path = new URL(req.url ?? '/', 'http://placeholder').pathname
         if (req.method === 'GET' && path === `${ROUTE}/page`) {
           sendHtml(res, status, errorPageHtml(
-            'This page could not be opened',
+            localized(PAGE_TEXT, lang, 'openFailed', 'This page could not be opened'),
             message,
             '',
             `${originOf(req, ctx.webServer.getOrigin())}${ROUTE}/bridge.js`,
           ))
           return
         }
-        sendJson(res, status, { error: message })
+        sendJson(res, status, { error: message, ...(error?.code === undefined ? {} : { code: error.code }) })
       })
     },
   }), 'deepread: HTTP route')

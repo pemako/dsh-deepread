@@ -314,6 +314,18 @@ window.__ModuleLoader__.load({
       return `${API}${path}`
     }
 
+    /** The interface language, as the application set it on `<html lang>`. */
+    function currentLanguage() {
+      const tag = typeof document === 'undefined' ? 'en' : String(document.documentElement.lang || 'en')
+      return /^zh/i.test(tag) ? 'zh' : 'en'
+    }
+
+    /** `fetch` for our routes: every request carries the interface language. */
+    function apiFetch(path, options = {}) {
+      const headers = { ...(options.headers ?? {}), 'x-dsh-deepread-locale': currentLanguage() }
+      return fetch(apiUrl(path), { ...options, headers })
+    }
+
     const POSITION_PREFIX = 'dsh.deepread.pos.'
 
     /**
@@ -405,7 +417,7 @@ window.__ModuleLoader__.load({
     }
 
     async function postJson(path, payload) {
-      const response = await fetch(apiUrl(path), {
+      const response = await apiFetch(path, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -958,7 +970,7 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (!visible) return undefined
         let cancelled = false
-        fetch(apiUrl(`/text/${docId}/${pageNumber}`))
+        apiFetch(`/text/${docId}/${pageNumber}`)
           .then((response) => readJsonResponse(response))
           .then((value) => {
             if (!cancelled) setWords(Array.isArray(value?.words) ? value.words : [])
@@ -1600,7 +1612,7 @@ window.__ModuleLoader__.load({
           const options = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
             ? { signal: AbortSignal.timeout(2500) }
             : {}
-          const response = await fetch(apiUrl(`/position/${id}`), options)
+          const response = await apiFetch(`/position/${id}`, options)
           const value = await readJsonResponse(response)
           const remote = normalizeStoredPosition(value?.position)
           if (remote !== null && (local === null || remote.at >= local.at)) return remote
@@ -1648,7 +1660,7 @@ window.__ModuleLoader__.load({
 
       function sendHostPosition(position) {
         if (position === null || typeof position.docId !== 'string') return
-        fetch(apiUrl('/position'), {
+        apiFetch('/position', {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -1758,7 +1770,7 @@ window.__ModuleLoader__.load({
         let cancelled = false
         setBusy(tx('loading.opening'))
         Promise.all([
-          fetch(apiUrl(`/doc/${stored}`)).then((response) => readJsonResponse(response)),
+          apiFetch(`/doc/${stored}`).then((response) => readJsonResponse(response)),
           loadStoredPosition(stored),
         ])
           .then(([value, position]) => {
@@ -1789,7 +1801,7 @@ window.__ModuleLoader__.load({
           const seq = searchSeq.current + 1
           searchSeq.current = seq
           setSearch({ query, loading: true, total: 0, pages: [], index: 0, error: null })
-          fetch(apiUrl(`/search/${doc.id}?q=${encodeURIComponent(query)}`))
+          apiFetch(`/search/${doc.id}?q=${encodeURIComponent(query)}`)
             .then((response) => readJsonResponse(response))
             .then((value) => {
               if (searchSeq.current !== seq) return
@@ -1814,7 +1826,7 @@ window.__ModuleLoader__.load({
           return undefined
         }
         let cancelled = false
-        fetch(apiUrl(`/annotations/${doc.id}`))
+        apiFetch(`/annotations/${doc.id}`)
           .then((response) => readJsonResponse(response))
           .then((value) => {
             if (!cancelled) setMarks(Array.isArray(value?.items) ? value.items : [])
@@ -2061,7 +2073,7 @@ window.__ModuleLoader__.load({
         }
         let cancelled = false
         setOutline({ state: 'loading', rows: [], error: '' })
-        fetch(apiUrl(`/outline/${doc.id}`))
+        apiFetch(`/outline/${doc.id}`)
           .then((response) => readJsonResponse(response))
           .then((value) => {
             if (cancelled) return
@@ -2277,7 +2289,7 @@ window.__ModuleLoader__.load({
       async function refreshDocuments() {
         setDocsBusy(true)
         try {
-          const value = await fetch(apiUrl('/documents')).then((response) => readJsonResponse(response))
+          const value = await apiFetch('/documents').then((response) => readJsonResponse(response))
           setDocs(Array.isArray(value?.items) ? value.items : [])
         } catch {
           setDocs([])
@@ -2291,7 +2303,7 @@ window.__ModuleLoader__.load({
         setBusy(tx('loading.opening'))
         try {
           const [value, position] = await Promise.all([
-            fetch(apiUrl(`/doc/${id}`)).then((response) => readJsonResponse(response)),
+            apiFetch(`/doc/${id}`).then((response) => readJsonResponse(response)),
             loadStoredPosition(id),
           ])
           if (!value || typeof value.id !== 'string') throw new Error('document not found')
@@ -2454,7 +2466,7 @@ window.__ModuleLoader__.load({
         flushPosition()
         setBusy(tx('loading.uploading', { name: file.name }))
         try {
-          const response = await fetch(apiUrl('/open'), {
+          const response = await apiFetch('/open', {
             method: 'POST',
             headers: {
               'content-type': 'application/pdf',
@@ -3274,7 +3286,7 @@ window.__ModuleLoader__.load({
                         className: 'dr-webframe',
                         style: webFrameStyle,
                         src: webMode === 'read'
-                          ? `${apiUrl('/page')}?url=${encodeURIComponent(webUrl)}&n=${webNonce}`
+                          ? `${apiUrl('/page')}?url=${encodeURIComponent(webUrl)}&n=${webNonce}&lang=${currentLanguage()}`
                           : webUrl,
                         title: webTitle === '' ? tx('page.untitled') : webTitle,
                         sandbox: webMode === 'read'
