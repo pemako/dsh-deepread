@@ -14,9 +14,9 @@ Plugins → Add plugin 里填：
 
 ## 依赖
 
-读 PDF 需要本机装有 Poppler 的 `pdfinfo`、`pdftotext`、`pdftoppm`：macOS 用 `brew install poppler`，Debian/Ubuntu 用 `apt install poppler-utils`，Windows 用 `scoop install poppler`。桌面端启动时可能看不到 Homebrew 的安装路径，所以插件会先查常见目录、再退回 `PATH`；也可以用 `DEEPREAD_POPPLER_DIR` 指定目录。Poppler 是系统程序而不是 npm 包，没法作为依赖自动装上。
+读 PDF 的文字需要本机装有 Poppler 的 `pdftotext`：macOS 用 `brew install poppler`，Debian/Ubuntu 用 `apt install poppler-utils`，Windows 用 `scoop install poppler`。桌面端启动时可能看不到 Homebrew 的安装路径，所以插件会先查常见目录、再退回 `PATH`；也可以用 `DEEPREAD_POPPLER_DIR` 指定目录。Poppler 是系统程序而不是 npm 包，没法作为依赖自动装上。
 
-书签目录走系统的 PDFKit（通过 `osascript`），这一项只在 macOS 上可用；其它平台面板里会说明，其余功能照常。
+页面由随插件安装的 `pdfjs-dist` 在浏览器里绘制，书签目录也来自它，所以没有 macOS-only 的部分。
 
 ## 上手
 
@@ -64,9 +64,9 @@ Plugins → Add plugin 里填：
 
 `index.js` 是 Host 半部：PDF 上传和存储、Poppler 解析、页面图片缓存、文档搜索、`ctx.web.search` 代理、PDFKit 书签读取（`osascript` 加 `text/outline.jxa`）、网页代理和选区桥、用系统浏览器打开，以及把选段投递给 `ctx.agents.get(sessionId).followup()`。
 
-`client.js` 是浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖的左右/上下分栏、PDF 图片和文字层、目录树、复制/搜索/提问、PDF 和网页的来源切换、网页工具栏和桥消息、右栏整块收起（`dsh.deepread.readeronly`），还有通过 `conversation.content` Factory 渲染的真实会话。终端用内置终端包的 `TerminalBody` 和 xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，contentId 由 `dsh.deepread.termgen.<sessionId>` 里的 generation 决定。插件不调 `ctx.sidebarRight` 的方法，所以不会去开会话右侧栏。终端帧的订阅放在终端内容组件里，外层不会每一帧都重渲染；PDF 页面用 `content-visibility: auto` 跳过屏幕外的绘制。侧栏图标的 pointerdown 只用 `mainView` 保留当前会话，不再预建 terminal tab。
+`client.js` 是浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖的左右/上下分栏、pdfjs 画布和 pdftotext 文字层、目录树、复制/搜索/提问、PDF 和网页的来源切换、网页工具栏和桥消息、右栏整块收起（`dsh.deepread.readeronly`），还有通过 `conversation.content` Factory 渲染的真实会话。终端用内置终端包的 `TerminalBody` 和 xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，contentId 由 `dsh.deepread.termgen.<sessionId>` 里的 generation 决定。插件不调 `ctx.sidebarRight` 的方法，所以不会去开会话右侧栏。终端帧的订阅放在终端内容组件里，外层不会每一帧都重渲染；PDF 页面用 `content-visibility: auto` 跳过屏幕外的绘制。侧栏图标的 pointerdown 只用 `mainView` 保留当前会话，不再预建 terminal tab。
 
-状态目录是 `$DSH_HOME/deepread/`，里面有 `docs/`、`text/`、`pages/`、`notes/`、`tmp/`。每份文档的页索引在 `text/<id>.json`，词框按页放在 `text/<id>.words/` 里；书籍目录缓存在 `text/<id>.outline.json`，脚本在 `text/outline.jxa`，高亮和笔记在 `notes/<id>.json`，阅读位置在 `positions.json`。
+状态目录是 `$DSH_HOME/deepread/`，里面有 `docs/`、`text/`、`notes/`、`tmp/`。每份文档的页索引在 `text/<id>.json`，词框按页放在 `text/<id>.words/` 里；书籍目录缓存在 `text/<id>.outline.json`，脚本在 `text/outline.jxa`，高亮和笔记在 `notes/<id>.json`，阅读位置在 `positions.json`。
 
 ## 限制
 

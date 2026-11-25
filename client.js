@@ -64,6 +64,7 @@ window.__ModuleLoader__.load({
       'loading.page': 'Loading page…',
       'error.upload': 'Could not open this PDF: {message}',
       'error.page': 'This page could not be rendered.',
+      'error.engine': 'The PDF engine could not start. Reload the page and try again.',
       'error.search': 'Search failed: {message}',
       'error.web': 'Web search failed: {message}',
       'error.ask': 'Could not send to the conversation: {message}',
@@ -330,6 +331,18 @@ window.__ModuleLoader__.load({
     function apiFetch(path, options = {}) {
       const headers = { ...(options.headers ?? {}), 'x-dsh-deepread-locale': currentLanguage() }
       return fetch(apiUrl(path), { ...options, headers })
+    }
+
+    /** pdfjs is served by the host from the plugin's own install. */
+    let enginePromise = null
+    function loadEngine() {
+      if (enginePromise === null) {
+        enginePromise = import(apiUrl('/pdfjs/build/pdf.min.mjs')).then((engine) => {
+          engine.GlobalWorkerOptions.workerSrc = new URL(apiUrl('/pdfjs/build/pdf.worker.min.mjs'), window.location.href).href
+          return engine
+        })
+      }
+      return enginePromise
     }
 
     const POSITION_PREFIX = 'dsh.deepread.pos.'
@@ -733,6 +746,8 @@ window.__ModuleLoader__.load({
 .dr-viewer{flex:1 1 auto;min-height:0;overflow:auto;position:relative;padding:16px 16px 92px;background:var(--dsw-alias-bg-base);scrollbar-gutter:stable}
 .dr-page{position:relative;width:calc(100% * var(--dr-zoom,1));margin:0 auto 16px;overflow:hidden;background:#fff;border-radius:2px;box-shadow:0 1px 3px rgba(0,0,0,.16);isolation:isolate;content-visibility:auto;contain-intrinsic-size:auto 900px}
 .dr-page img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:fill;user-select:none;-webkit-user-drag:none}
+.dr-page canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+.dr-engine-note{position:sticky;top:0;z-index:6;margin:0 0 8px;padding:6px 10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-state-error-primary);font-size:12px}
 .dr-words{position:absolute;inset:0;overflow:hidden;pointer-events:none;user-select:text}
 .dr-line{position:absolute;left:0;width:100%}
 .dr-word{position:absolute;top:0;height:100%;overflow:hidden;color:transparent;font-family:inherit;font-size:8px;line-height:1;white-space:pre;cursor:text;pointer-events:auto;user-select:text}
@@ -957,11 +972,13 @@ window.__ModuleLoader__.load({
 
     const EMPTY_MARKS = Object.freeze([])
 
-    const PageView = React.memo(function PageView({ docId, pageNumber, page, highlight, imageDpi, marks }) {
+    const PageView = React.memo(function PageView({ pdf, docId, pageNumber, page, highlight, marks, errorText }) {
       const shellRef = React.useRef(null)
+      const canvasRef = React.useRef(null)
       const [visible, setVisible] = React.useState(false)
+      const [width, setWidth] = React.useState(0)
       const [words, setWords] = React.useState(null)
-      const [loaded, setLoaded] = React.useState(false)
+      const [state, setState] = React.useState('idle')
 
       React.useEffect(() => {
         const element = shellRef.current
@@ -971,11 +988,30 @@ window.__ModuleLoader__.load({
           return undefined
         }
         const observer = new IntersectionObserver((entries) => {
-          if (entries.some((entry) => entry.isIntersecting)) {
-            setVisible(true)
-            observer.disconnect()
+          const shown = entries.some((entry) => entry.isIntersecting)
+          setVisible(shown)
+          // Release the bitmap when the page leaves the reading area; the
+          // canvas keeps its slot through the page's aspect ratio.
+          if (!shown) {
+            setState('idle')
+            const canvas = canvasRef.current
+            if (canvas !== null) {
+              canvas.width = 1
+              canvas.height = 1
+            }
           }
         }, { rootMargin: '900px 0px' })
+        observer.observe(element)
+        return () => observer.disconnect()
+      }, [])
+
+      React.useEffect(() => {
+        const element = shellRef.current
+        if (element === null) return undefined
+        const measure = () => setWidth(element.clientWidth)
+        measure()
+        if (typeof ResizeObserver !== 'function') return undefined
+        const observer = new ResizeObserver(measure)
         observer.observe(element)
         return () => observer.disconnect()
       }, [])
@@ -994,8 +1030,43 @@ window.__ModuleLoader__.load({
         return () => { cancelled = true }
       }, [visible, docId, pageNumber])
 
-      const width = page && page.width > 0 ? page.width : 612
-      const height = page && page.height > 0 ? page.height : 792
+      React.useEffect(() => {
+        if (!visible || pdf === null || width <= 0) return undefined
+        let cancelled = false
+        let task = null
+        setState('drawing')
+        const timer = window.setTimeout(async () => {
+          try {
+            const pageProxy = await pdf.getPage(pageNumber)
+            if (cancelled) return
+            const canvas = canvasRef.current
+            if (canvas === null) return
+            const ratio = Math.min(3, typeof window.devicePixelRatio === 'number' ? window.devicePixelRatio : 1)
+            const base = pageProxy.getViewport({ scale: 1 })
+            const scale = (width * ratio) / base.width
+            const viewport = pageProxy.getViewport({ scale })
+            canvas.width = Math.max(1, Math.round(viewport.width))
+            canvas.height = Math.max(1, Math.round(viewport.height))
+            const context = canvas.getContext('2d', { alpha: false })
+            if (context === null) return
+            task = pageProxy.render({ canvasContext: context, viewport })
+            await task.promise
+            if (!cancelled) setState('drawn')
+          } catch (error) {
+            if (cancelled) return
+            console.error('deepread: page render failed', error)
+            setState('failed')
+          }
+        }, 60)
+        return () => {
+          cancelled = true
+          window.clearTimeout(timer)
+          try { task?.cancel() } catch { /* the task may have settled already */ }
+        }
+      }, [visible, pdf, pageNumber, width])
+
+      const widthPts = page && page.width > 0 ? page.width : 612
+      const heightPts = page && page.height > 0 ? page.height : 792
       const lines = React.useMemo(() => groupWords(words), [words])
       const tokens = React.useMemo(() => {
         const query = (highlight || '').trim().toLowerCase()
@@ -1006,19 +1077,17 @@ window.__ModuleLoader__.load({
         ref: shellRef,
         className: 'dr-page',
         'data-page': pageNumber,
-        style: { aspectRatio: `${width} / ${height}` },
+        style: { aspectRatio: `${widthPts} / ${heightPts}` },
       }, [
-        h('img', {
-          key: 'img',
-          src: apiUrl(`/page/${docId}/${pageNumber}?dpi=${imageDpi}`),
-          alt: '',
-          draggable: false,
-          loading: 'lazy',
-          onLoad: () => setLoaded(true),
-          onError: () => setLoaded(true),
+        h('canvas', {
+          key: 'canvas',
+          ref: canvasRef,
+          className: 'dr-page-canvas',
+          'aria-hidden': 'true',
         }),
-        !loaded && h('div', { key: 'load', className: 'dr-page-loading' }, h('span', { className: 'dr-spinner' })),
-        loaded && words === null && h('div', { key: 'words-loading', className: 'dr-page-loading' }, h('span', { className: 'dr-spinner' })),
+        state !== 'drawn' && state !== 'failed' && h('div', { key: 'load', className: 'dr-page-loading' }, h('span', { className: 'dr-spinner' })),
+        state === 'failed' && h('div', { key: 'fail', className: 'dr-page-error' }, errorText),
+        state === 'drawn' && words === null && h('div', { key: 'words-loading', className: 'dr-page-loading' }, h('span', { className: 'dr-spinner' })),
         marks !== undefined && marks.length > 0 && h('div', { key: 'marks', className: 'dr-marks' },
           marks.flatMap((mark) => (Array.isArray(mark.boxes) ? mark.boxes : []).map((box, index) => h('div', {
             key: `${mark.id}-${index}`,
@@ -1040,8 +1109,8 @@ window.__ModuleLoader__.load({
           className: 'dr-line',
           'data-line': lineIndex,
           style: {
-            top: `${(line.y0 / height) * 100}%`,
-            height: `${Math.max(0.65, ((line.y1 - line.y0) / height) * 100)}%`,
+            top: `${(line.y0 / heightPts) * 100}%`,
+            height: `${Math.max(0.65, ((line.y1 - line.y0) / heightPts) * 100)}%`,
             left: 0,
             width: '100%',
           },
@@ -1057,8 +1126,8 @@ window.__ModuleLoader__.load({
             'data-text': text,
             'data-match': match ? '1' : undefined,
             style: {
-              left: `${(word.x0 / width) * 100}%`,
-              width: `${Math.max(0.15, ((word.x1 - word.x0) / width) * 100)}%`,
+              left: `${(word.x0 / widthPts) * 100}%`,
+              width: `${Math.max(0.15, ((word.x1 - word.x0) / widthPts) * 100)}%`,
             },
           }, text)
         })))),
@@ -1423,18 +1492,46 @@ window.__ModuleLoader__.load({
       const [docError, setDocError] = React.useState('')
       const [busy, setBusy] = React.useState('')
       const [zoom, setZoom] = React.useState(1)
-      // Page images arrive as rasters; ask for a denser one on retina screens
-      // and while zoomed in, then step it only when the value really changes.
-      const [imageDpi, setImageDpi] = React.useState(() => {
-        const ratio = typeof window.devicePixelRatio === 'number' ? Math.min(2, window.devicePixelRatio) : 1
-        return Math.min(300, Math.max(96, Math.round((130 * ratio) / 10) * 10))
-      })
+      // The browser draws pages from the PDF itself; the host only supplies the
+      // text layer that pdftotext extracted at open time.
+      const [pdf, setPdf] = React.useState(null)
+      const [engineState, setEngineState] = React.useState('idle')
       React.useEffect(() => {
-        const ratio = typeof window.devicePixelRatio === 'number' ? Math.min(2, window.devicePixelRatio) : 1
-        const wanted = Math.min(300, Math.max(96, Math.round((130 * ratio * zoom) / 10) * 10))
-        const timer = window.setTimeout(() => setImageDpi(wanted), 350)
-        return () => window.clearTimeout(timer)
-      }, [zoom])
+        if (doc === null) {
+          setPdf(null)
+          setEngineState('idle')
+          return undefined
+        }
+        let cancelled = false
+        let loaded = null
+        setEngineState('loading')
+        ;(async () => {
+          try {
+            const engine = await loadEngine()
+            const task = engine.getDocument({
+              url: new URL(apiUrl(`/file/${doc.id}`), window.location.href).href,
+              cMapUrl: new URL(apiUrl('/pdfjs/cmaps/'), window.location.href).href,
+              cMapPacked: true,
+              standardFontDataUrl: new URL(apiUrl('/pdfjs/standard_fonts/'), window.location.href).href,
+              isEvalSupported: false,
+            })
+            loaded = await task.promise
+            if (cancelled) return
+            setPdf(loaded)
+            setEngineState('ready')
+          } catch (error) {
+            if (cancelled) return
+            console.error('deepread: the PDF engine could not start', error)
+            setEngineState('failed')
+          }
+        })()
+        return () => {
+          cancelled = true
+          try { loaded?.destroy() } catch { /* already gone */ }
+        }
+        // The document id identifies the file; a reload changes it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [doc?.id])
 
       // The desktop window draws its traffic lights over the top-left corner.
       // When this panel sits at the window edge, the first row has to start
@@ -2080,28 +2177,46 @@ window.__ModuleLoader__.load({
 
 
       React.useEffect(() => {
-        if (doc === null) {
+        if (pdf === null) {
           setOutline({ state: 'idle', rows: [], error: '' })
           return undefined
         }
         let cancelled = false
         setOutline({ state: 'loading', rows: [], error: '' })
-        apiFetch(`/outline/${doc.id}`)
-          .then((response) => readJsonResponse(response))
-          .then((value) => {
+        ;(async () => {
+          try {
+            const raw = await pdf.getOutline()
+            const rows = []
+            const walk = async (items, depth) => {
+              for (const item of items ?? []) {
+                if (rows.length >= 2000) return
+                const title = typeof item?.title === 'string'
+                  ? item.title.replace(/\s+/g, ' ').trim().slice(0, 300)
+                  : ''
+                let page = 0
+                try {
+                  const dest = typeof item?.dest === 'string' ? await pdf.getDestination(item.dest) : item?.dest
+                  if (Array.isArray(dest) && dest[0] !== undefined && dest[0] !== null) {
+                    page = (await pdf.getPageIndex(dest[0])) + 1
+                  }
+                } catch {
+                  page = 0
+                }
+                if (title !== '') rows.push({ title, page, depth })
+                if (Array.isArray(item?.items) && item.items.length > 0) await walk(item.items, depth + 1)
+              }
+            }
+            await walk(raw, 0)
             if (cancelled) return
-            const rows = Array.isArray(value?.outline) ? value.outline : []
-            setOutline({ state: 'ready', rows, error: typeof value?.code === 'string' ? value.code : '' })
+            setOutline({ state: 'ready', rows, error: '' })
             const tree = buildOutlineTree(rows)
             setExpanded(collectOutlineIds(tree, (node) => node.children.length > 0 && node.depth < 1))
-          })
-          .catch((error) => {
-            if (!cancelled) setOutline({ state: 'error', rows: [], error: 'outline-failed' })
-          })
+          } catch {
+            if (!cancelled) setOutline({ state: 'ready', rows: [], error: 'outline-failed' })
+          }
+        })()
         return () => { cancelled = true }
-        // The outline belongs to the document id; object identity changes on reload.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [doc?.id])
+      }, [pdf])
 
       React.useEffect(() => {
         const viewer = viewerRef.current
@@ -3351,15 +3466,19 @@ window.__ModuleLoader__.load({
                   ]),
                   h('small', { key: 'h' }, tx('empty.hint')),
                 ])
-                : (Array.isArray(doc.texts) ? doc.texts : []).map((page, index) => h(PageView, {
-                  imageDpi,
-                  key: `${doc.id}-${index + 1}`,
-                  docId: doc.id,
-                  pageNumber: index + 1,
-                  page,
-                  highlight: search?.query ?? '',
-                  marks: marksByPage.get(index + 1) ?? EMPTY_MARKS,
-                }))),
+                : [
+                  engineState === 'failed' && h('div', { key: 'engine', className: 'dr-engine-note' }, tx('error.engine')),
+                  ...(Array.isArray(doc.texts) ? doc.texts : []).map((page, index) => h(PageView, {
+                    key: `${doc.id}-${index + 1}`,
+                    pdf,
+                    docId: doc.id,
+                    pageNumber: index + 1,
+                    page,
+                    highlight: search?.query ?? '',
+                    marks: marksByPage.get(index + 1) ?? EMPTY_MARKS,
+                    errorText: tx('error.page'),
+                  })),
+                ]),
             busy !== '' && h('div', {
               key: 'busy',
               style: doc === null

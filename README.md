@@ -14,9 +14,9 @@ Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appear
 
 ## Requirements
 
-Reading PDFs needs Poppler's `pdfinfo`, `pdftotext` and `pdftoppm` on the machine that runs DSH: `brew install poppler` on macOS, `apt install poppler-utils` on Debian/Ubuntu, `scoop install poppler` on Windows. A desktop launch may not see a Homebrew install, so the plugin looks in the usual locations and falls back to `PATH`; `DEEPREAD_POPPLER_DIR` points it at a custom directory. Poppler is a system program, not an npm package, so it cannot arrive as a dependency.
+PDF text needs Poppler's `pdftotext` on the machine that runs DSH: `brew install poppler` on macOS, `apt install poppler-utils` on Debian/Ubuntu, `scoop install poppler` on Windows. A desktop launch may not see a Homebrew install, so the plugin looks in the usual locations and falls back to `PATH`; `DEEPREAD_POPPLER_DIR` points it at a custom directory. Poppler is a system program, not an npm package, so it cannot arrive as a dependency.
 
-Bookmark outlines go through the system's PDFKit via `osascript`, which is macOS-only; the pane says so elsewhere and everything else keeps working.
+Pages are drawn by the bundled `pdfjs-dist` engine in the browser, and bookmark outlines come from it too, so nothing here is macOS-only.
 
 ## Getting going
 
@@ -64,9 +64,9 @@ Links and GET search forms go back to the panel, which proxies them again, so th
 
 `index.js` is the Host half: upload and storage, Poppler parsing, the page image cache, document search, the `ctx.web.search` proxy, bookmark reading through `osascript` and `text/outline.jxa`, the page proxy and selection bridge, opening the system browser, and delivering a selection to `ctx.agents.get(sessionId).followup()`.
 
-`client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, PDF images and the text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
+`client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, pdfjs canvases and the pdftotext text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
 
-State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, `notes/`, and `tmp/`. A document keeps its page index in `text/<id>.json` and its word boxes under `text/<id>.words/`, one file per page; book outlines are cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
+State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `notes/`, and `tmp/`. A document keeps its page index in `text/<id>.json` and its word boxes under `text/<id>.words/`, one file per page; book outlines are cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
 
 ## Limits
 

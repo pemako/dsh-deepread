@@ -49,6 +49,9 @@ jobs:
             exit 1
           fi
 
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Check the host and client bundles parse
         run: |
           node --check index.js
