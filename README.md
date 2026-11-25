@@ -14,21 +14,25 @@ Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appear
 
 ## Getting going
 
-Click DeepRead in the sidebar. For a PDF, hit Open PDF and pick a file; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
+Click DeepRead in the sidebar. For a PDF, choose a file from the empty state; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
 
 Drag the divider to change the split. A narrow window stacks the two sides instead.
 
 Select text in either mode and the same bar appears at the bottom. Copy rebuilds plain text from the text layer, so Chinese doesn't come out with spaces between characters. Search opens a web search card inside the PDF; copying also opens it with the text already filled in. Ask AI sends the selection to the real conversation on the right as an ordinary user message, with the page title and address along for the ride when you're reading a page.
 
-The toolbar jumps to a page, changes zoom, and finds text in the document. Outline shows the PDF bookmarks as a tree you can filter and click through, with the current page marked.
+Selections can also be kept. Pick a highlight colour, and the passage stays marked on the page; each highlight takes a note. The highlights button lists them by page, jumps to one, changes its colour or note, and removes it. They live next to the document on the Host, so they are still there after a restart and after switching computers.
+
+The toolbar keeps the reading controls on the left (page, zoom, find) and the actions on the right as icons: contents, highlights, documents, the right-pane layout, the session picker and the conversation entry. A find shows the hits as a list of pages with a snippet, and clicking one goes there; typing no longer moves the page on its own. Zoom re-renders pages at a higher resolution, so text stays sharp when magnified. The contents icon opens the PDF bookmarks as a tree you can filter and click through, with the current page marked. Icons name themselves on hover, and when the window is too narrow for everything a More menu holds whatever no longer fits.
+
+The documents button keeps what the reader has stored, newest first. Open another one from that list, or remove one together with its highlights.
 
 Page mode has its own zoom as well: the −/percentage/+ control, or ⌘/Ctrl with the scroll wheel. It changes the layout width of the iframe and then scales the result, so text reflows the way browser zoom does instead of becoming a magnified picture. The level is remembered.
 
 ## The right side
 
-The right pane starts as a vertical split with the conversation on top and a terminal underneath, running in the session workspace and sizing itself to the pane. The three-way switch at the top picks split, conversation only, or terminal only. Leaving the terminal detaches its view but keeps the process, and coming back reattaches the same one.
+The right pane starts as a vertical split with the conversation on top and a terminal underneath, running in the session workspace and sizing itself to the pane. The three-way switch in the top bar picks split, conversation only, or terminal only. Leaving the terminal detaches its view but keeps the process, and coming back reattaches the same one.
 
-The collapse button, also in the pane header, hides the whole right side so the reading area takes over the panel. The terminal keeps running while it's hidden, and the panel mentions that once. Expanding brings back the split and ratio you had. With no PDF open the button isn't there, since there's nothing to widen. Asking AI with a selection expands the pane and switches to the conversation even from terminal-only mode, without touching the collapsed preference you saved.
+The collapse button at the end of the top bar hides the whole right side so the reading area takes over the panel. The terminal keeps running while it's hidden, and the panel mentions that once. Expanding brings back the split and ratio you had. With no PDF open the button isn't there, since there's nothing to widen. Asking AI with a selection expands the pane and switches to the conversation even from terminal-only mode, without touching the collapsed preference you saved.
 
 The terminal belongs to DeepRead. It's created through `ctx.get('webTerminals').view(sessionId, contentId, contentId)` with a contentId like `deepread-terminal-<generation>`, where the generation is kept per session in localStorage. It doesn't add a tab to the session's own right sidebar, so switching sessions never opens that sidebar or drops a terminal into it. Fonts and theme follow DSH. While the panel is mounted the view holds the terminal; after leaving and coming back, the same contentId reattaches to the Host process if it's still alive. Otherwise you get "unavailable" and a New terminal button, which starts a new generation after closing the old one.
 
@@ -46,6 +50,8 @@ Reader mode proxies the page through the Host route `/dsh-deepread/api/page`. It
 
 Original mode loads the page as it is inside a sandboxed iframe, which suits sites that need their own origin. There's no bridge in this mode, so selection-based actions are off; the panel says so and offers a way back to reader mode.
 
+Reader mode finds text inside the page too: the find field counts the matches, highlights them in the page, and steps through them without leaving the reader.
+
 Links and GET search forms go back to the panel, which proxies them again, so the iframe never wanders off to another site by itself. POST forms and Cmd/Ctrl+click open in the system browser. A page is capped at 12 MB. The address, source, mode, and page zoom are remembered on their own; PDFs and their positions are kept separately.
 
 ## Files
@@ -54,7 +60,7 @@ Links and GET search forms go back to the panel, which proxies them again, so th
 
 `client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, PDF images and the text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
 
-State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, and `tmp/`, with book outlines cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, and positions in `positions.json`.
+State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, `notes/`, and `tmp/`, with book outlines cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, highlights and notes as `notes/<id>.json`, and positions in `positions.json`.
 
 ## Limits
 
