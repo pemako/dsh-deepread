@@ -22,6 +22,7 @@ window.__ModuleLoader__.load({
       'page.forward': 'Forward',
       'page.reload': 'Reload',
       'page.external': 'Open in system browser',
+      'webfind.placeholder': 'Find in this page',
       'page.reader': 'Reader',
       'page.original': 'Original site',
       'page.readerHint': 'Reader mode proxies the page so it can be embedded and its selections read',
@@ -644,6 +645,7 @@ window.__ModuleLoader__.load({
 .dr-icon-spinner{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-width:1.2px}
 .dr-tip::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);right:0;z-index:70;padding:4px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);font-size:11px;line-height:1.4;white-space:nowrap;opacity:0;transform:translateY(-2px);pointer-events:none;transition:opacity .12s ease,transform .12s ease;box-shadow:0 8px 20px rgba(0,0,0,.18)}
 .dr-tip:hover::after,.dr-tip:focus-visible::after{opacity:1;transform:none}
+.dr-sep{flex:none;width:1px;height:18px;margin:0 2px;background:var(--dsw-alias-border-l1)}
 .dr-brand{display:inline-flex;align-items:center;gap:6px;flex:none;font-size:13px;font-weight:600;letter-spacing:.01em}
 .dr-brand svg{color:var(--dsw-alias-brand-primary)}
 .dr-doc-meta{flex:none;font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -2615,42 +2617,6 @@ window.__ModuleLoader__.load({
             }, h(GlobeIcon, {})),
           ]),
           h('div', { key: 'actions', className: 'dr-head-actions' }, [
-            !collapsed && h('div', {
-              key: 'side-mode',
-              className: 'dr-mode-switch',
-              role: 'group',
-              'aria-label': tx('side.mode'),
-            }, [
-              ['split', tx('side.split')],
-              ['chat', tx('side.chat')],
-              ['terminal', tx('side.terminal')],
-            ].map(([mode, label]) => h('button', {
-              key: mode,
-              type: 'button',
-              className: 'dr-mode-btn',
-              'data-on': sideMode === mode ? '1' : undefined,
-              'aria-pressed': sideMode === mode,
-              onClick: () => {
-                setSideMode(mode)
-                if (mode !== 'chat') setTermEnabled(true)
-              },
-            }, label))),
-            !collapsed && Array.isArray(sessionIds) && sessionIds.length > 0 && h('select', {
-              key: 'side-session',
-              className: 'dr-input dr-session-select',
-              value: pickedSession,
-              title: tx('chat.pick'),
-              'aria-label': tx('chat.pick'),
-              onChange: (event) => chooseSession(event.target.value),
-            }, [
-              h('option', { key: 'auto', value: '' }, tx('chat.follow')),
-              ...sessionIds.map((id) => h('option', { key: id, value: id },
-                String(sessionsById?.[id]?.title || id).slice(0, 80))),
-            ]),
-            !collapsed && h('span', {
-              key: 'side-pill',
-              className: `dr-session-pill${hasSession ? '' : ' dr-off'}`,
-            }, hasSession ? tx('chat.live') : tx('chat.none')),
             source === 'web' && h('div', { key: 'webnav', className: 'dr-group' }, [
               h('button', {
                 key: 'back',
@@ -2965,6 +2931,43 @@ window.__ModuleLoader__.load({
                 ? { background: 'var(--dsw-alias-bg-layer-2)', color: 'var(--dsw-alias-label-primary)' }
                 : undefined,
             }, [h(StackIcon, { key: 'i' })]),
+            !collapsed && h('span', { key: 'sep-side', className: 'dr-sep' }),
+            !collapsed && h('div', {
+              key: 'side-mode',
+              className: 'dr-mode-switch',
+              role: 'group',
+              'aria-label': tx('side.mode'),
+            }, [
+              ['split', tx('side.split')],
+              ['chat', tx('side.chat')],
+              ['terminal', tx('side.terminal')],
+            ].map(([mode, label]) => h('button', {
+              key: mode,
+              type: 'button',
+              className: 'dr-mode-btn',
+              'data-on': sideMode === mode ? '1' : undefined,
+              'aria-pressed': sideMode === mode,
+              onClick: () => {
+                setSideMode(mode)
+                if (mode !== 'chat') setTermEnabled(true)
+              },
+            }, label))),
+            !collapsed && Array.isArray(sessionIds) && sessionIds.length > 0 && h('select', {
+              key: 'side-session',
+              className: 'dr-input dr-session-select',
+              value: pickedSession,
+              title: tx('chat.pick'),
+              'aria-label': tx('chat.pick'),
+              onChange: (event) => chooseSession(event.target.value),
+            }, [
+              h('option', { key: 'auto', value: '' }, tx('chat.follow')),
+              ...sessionIds.map((id) => h('option', { key: id, value: id },
+                String(sessionsById?.[id]?.title || id).slice(0, 80))),
+            ]),
+            !collapsed && h('span', {
+              key: 'side-pill',
+              className: `dr-session-pill${hasSession ? '' : ' dr-off'}`,
+            }, hasSession ? tx('chat.live') : tx('chat.none')),
             !collapsed && hasSession && h('button', {
               key: 'conversation',
               type: 'button',
