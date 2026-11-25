@@ -1,93 +1,75 @@
-# 深读 / DeepRead
+# DeepRead
 
-一个带左侧栏入口的 DSH Web 插件：左边读 PDF **或网页**，右边是当前会话本身。
-工具栏顶部的「PDF / 网页」开关切换左侧读什么，右侧的对话、终端和底部选区栏都不变。
+DeepRead adds a sidebar entry that opens a reading pane. The left side shows a PDF or a web page, and the right side is the conversation you're already in. The PDF / Web page switch in the toolbar only changes what the left side shows; the chat, the terminal, and the selection bar along the bottom stay as they are.
 
-## 安装
+## Install
 
-在 DSH 的 **Plugins → Add plugin** 里填入包名：
+Open Plugins → Add plugin and enter:
 
 ```
 @pemako/dsh-deepread
 ```
 
-也可以固定版本（例如 `@pemako/dsh-deepread@0.1.0`）。装好后左侧栏出现「深读」入口。
-PDF 解析用本机 Poppler（`pdfinfo`、`pdftotext`、`pdftoppm`），需要先装好。
+Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appears in the sidebar afterwards. PDFs are rendered by the local Poppler tools (`pdfinfo`, `pdftotext`, `pdftoppm`), so install those first.
 
-## 使用
+## Getting going
 
-1. 点左侧栏的「深读」图标（在 Plugins / Schedules 之后）。
-2. 来源为 **PDF** 时，点「打开 PDF」选择本地文件。文件会上传到 Host，用本机 Poppler
-   （`pdfinfo`、`pdftotext`、`pdftoppm`）转成页面图片和带坐标的文字层。
-   来源为 **网页** 时，直接在地址栏输入网址（裸域名按 https，`localhost:3000` 这类按 http），
-   地址栏旁的 ← →、刷新和「用系统浏览器打开」都作用于当前网页。
-3. 拖动中间的分隔条调整左右比例；窄窗口会自动上下堆叠。
-4. 选中 PDF 文字或网页文字后，底部出现同一个选段栏：
-   - **复制**：按文字层重建纯文本（中文不会在字间插空格）。
-   - **搜索**：在 PDF 页内打开网页搜索卡片；复制文字时卡片也会自动打开并填入内容。
-   - **问 AI**：把选段（网页模式还会带上页面标题和地址）作为普通用户消息发到右侧的真实会话，
-     由当前 Agent 回答。
-   网页模式下工具栏还有缩放：`−` / 百分比 / `+`（0.5–2，点击百分比回到 100%），
-   或在阅读模式里用 ⌘/Ctrl + 滚轮。缩放改变的是 iframe 的布局宽度再整体缩放，
-   所以文字会像浏览器缩放那样重排，而不是把页面当成图片放大。缩放值也会记住。
-5. 工具栏支持页码跳转、缩放、文档内查找（上一个/下一个匹配）。
-6. 工具栏的 **目录** 按钮打开书签目录树：支持展开/收起、筛选，点击章节跳到对应页；
-   当前页会高亮。目录从 PDF 书签读取。
-7. 右侧默认上下分栏：上面是真实会话，下面是**终端**，在会话工作区里运行；终端随面板大小自适应。切到「只看对话」或收起右栏时视图断开、进程保持，回来时接回同一个进程。右栏顶部的三段开关可切换 **分栏 / 只看对话 / 只看终端**。
-8. 工具栏右侧的 **收起右栏 / 展开右栏** 按钮（右栏头部也有一个同样的收起箭头）可以整块收起右栏（对话 + 终端），PDF 占满面板；右栏只是隐藏，终端进程和会话状态都保持，收起时会提示一次「会话和终端仍在后台运行」。展开后回到收起前的分栏模式和比例；没有打开 PDF 时不提供这个按钮，因为此时没有要加宽的阅读区。选中文字点「问 AI」会临时展开右栏并切到对话（原本在「只看终端」时也能看到回答），这次自动展开不会改写你保存的收起偏好。
-9. 终端是**深读面板自己的**一个独立视图：用 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`
-   创建，contentId 形如 `deepread-terminal-<generation>`（generation 按会话存在 localStorage）。它**不会**在
-   会话右侧栏新建 terminal tab，所以切换会话时右侧栏不会被撑开，也不会被塞进一个终端；字体、主题跟随
-   DSH 设置。面板挂载期间视图持有终端附件；离开深读再回来，同一个 contentId 会接回同一个 Host 进程
-   （进程还在时），进程已不在则显示「不可用 + 新终端」。「新终端」换一个 generation，先关掉旧进程。
-10. 深读不再提供「原生 iTerm 窗口」集成：打开 iTerm 的按钮、窗口自动对齐和 AppleScript 依赖都已移除。
-11. 右侧会话默认跟随当前会话；如果切换全局面板导致当前会话丢失，聊天栏有会话下拉框可手动选择。
-    切换走后 PDF 会保留，点回「深读」会自动重新打开。
-12. **阅读位置按文档自动记忆**：页码、页内比例、缩放都会保存；切换便签墙/其它面板、
-    或关闭再打开都会回到上次位置。位置同时写入 Host（`positions.json`）和浏览器
-    localStorage，Host 版本用于跨重启，localStorage 用于面板切换时的即时兜底。
+Click DeepRead in the sidebar. For a PDF, hit Open PDF and pick a file; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
 
-## 网页模式
+Drag the divider to change the split. A narrow window stacks the two sides instead.
 
-- **阅读模式**（默认）：一次顶层导航经由 Host 路由 `/dsh-deepread/api/page` 代理——
-  去掉原站的 `X-Frame-Options` / CSP，注入 `<base>` 让原站 CSS、图片和脚本仍从原站加载，
-  再注入选区桥 `/dsh-deepread/api/bridge.js`。代理文档自带 `Content-Security-Policy: sandbox`，
-  即使被单独打开也拿不到应用源。面板只接收桥上报的选中文字、链接、GET 表单搜索和标题。
-  划词后沿用同一个底部选区栏，复制/搜索/问 AI 都可用。
-- **原站模式**：网页原样装在 sandbox iframe 里，兼容依赖自身源的页面；没有选区桥，
-  因此不能划词提问（面板里有提示和「切回阅读模式」）。
-- 页面里的链接和 GET 搜索表单都回传给面板，由面板重新代理，不会让 iframe 直接跑到外站；
-  POST 表单和 Cmd/Ctrl+点击交给系统浏览器。单页上限 12 MB。
-- 网页地址、来源、阅读/原站模式和网页缩放都会记住；PDF 文档和阅读位置仍各自保留。
+Select text in either mode and the same bar appears at the bottom. Copy rebuilds plain text from the text layer, so Chinese doesn't come out with spaces between characters. Search opens a web search card inside the PDF; copying also opens it with the text already filled in. Ask AI sends the selection to the real conversation on the right as an ordinary user message, with the page title and address along for the ride when you're reading a page.
 
-## 结构
+The toolbar jumps to a page, changes zoom, and finds text in the document. Outline shows the PDF bookmarks as a tree you can filter and click through, with the current page marked.
 
-- `index.js` — Host 半部：PDF 上传/存储、Poppler 解析、页面图片缓存、文档搜索、
-  `ctx.web.search` 代理、PDFKit 书签读取（`osascript` + `text/outline.jxa`）、
-  网页代理与选区桥、系统浏览器打开，以及把 PDF 或网页选段投递到
-  `ctx.agents.get(sessionId).followup()`。
-- `client.js` — 浏览器半部：`sidebar.panellist` 入口、`main` 面板、可拖拽左右/上下分栏、
-  PDF 图片 + 文字层、目录树、复制/搜索/提问交互、PDF/网页来源开关、网页工具栏与桥消息处理、
-  右栏整块收起（`dsh.deepread.readeronly`），
-  以及通过 `conversation.content` Factory 渲染的真实会话。终端加载内置终端包的
-  `TerminalBody` / xterm，视图来自 `ctx.get('webTerminals').view(sessionId, contentId, contentId)`，
-  contentId 由 `dsh.deepread.termgen.<sessionId>` 的 generation 决定，插件不再调用
-  `ctx.sidebarRight` 的任何方法，因此不会打开会话右侧栏。终端帧的订阅放在终端内容组件内部，
-  外层不随每帧输出重渲染；PDF 页面使用 `content-visibility: auto` 跳过离屏页面绘制。
-  侧栏图标的 pointerdown 只用 `mainView` 保留当前会话，不再预建 terminal tab。
-- 状态目录：`$DSH_HOME/deepread/`（`docs/`、`text/`、`pages/`、`tmp/`），
-  书籍目录缓存在 `text/<id>.outline.json`，脚本在 `text/outline.jxa`；
-  阅读位置在 `positions.json`。
+Page mode has its own zoom as well: the −/percentage/+ control, or ⌘/Ctrl with the scroll wheel. It changes the layout width of the iframe and then scales the result, so text reflows the way browser zoom does instead of becoming a magnified picture. The level is remembered.
 
-## 限制
+## The right side
 
-- 需要本机安装 Poppler。找不到时打开 PDF 会返回一个明确的 501 错误。
-- 加密/需要密码的 PDF 不支持。
-- 扫描版 PDF 没有文字层：页面可以看，但选中、复制、文档内搜索不可用。
-- 网页搜索走 DSH 已配置的 `ctx.web` provider；未配置时搜索卡片会显示错误。
-- 网页阅读模式不带站点 Cookie，需要登录的页面会显示未登录；重 JS 站点可能降级；
-  弹窗被禁用；绕过选区桥的跳转（`location.assign`、`meta refresh`）会让选区失效，刷新即可恢复。
-- 终端是面板内的 Web 终端（xterm），不是 iTerm2 本体，也没有 iTerm 的独立窗口/分屏；深读不再打开外部 iTerm。
-- 终端只属于深读面板，不出现在会话右侧栏；要在侧栏里跑命令，请用会话右上角的「新建终端」。
-- 面板关闭期间终端没有窗口持有（window hold）：进程会在完全空闲达到终端的无人值守回收时间（默认 2 小时）
-  后被关闭；那时再回到深读会显示「不可用」，点「新终端」即可换一个进程。
+The right pane starts as a vertical split with the conversation on top and a terminal underneath, running in the session workspace and sizing itself to the pane. The three-way switch at the top picks split, conversation only, or terminal only. Leaving the terminal detaches its view but keeps the process, and coming back reattaches the same one.
+
+The collapse button, also in the pane header, hides the whole right side so the reading area takes over the panel. The terminal keeps running while it's hidden, and the panel mentions that once. Expanding brings back the split and ratio you had. With no PDF open the button isn't there, since there's nothing to widen. Asking AI with a selection expands the pane and switches to the conversation even from terminal-only mode, without touching the collapsed preference you saved.
+
+The terminal belongs to DeepRead. It's created through `ctx.get('webTerminals').view(sessionId, contentId, contentId)` with a contentId like `deepread-terminal-<generation>`, where the generation is kept per session in localStorage. It doesn't add a tab to the session's own right sidebar, so switching sessions never opens that sidebar or drops a terminal into it. Fonts and theme follow DSH. While the panel is mounted the view holds the terminal; after leaving and coming back, the same contentId reattaches to the Host process if it's still alive. Otherwise you get "unavailable" and a New terminal button, which starts a new generation after closing the old one.
+
+DeepRead no longer opens an iTerm window. The iTerm button, the window alignment, and the AppleScript they needed are gone.
+
+The conversation follows the current session. If switching a global panel leaves no current session, the chat bar has a dropdown to pick one. The PDF stays open, and clicking DeepRead again brings it back.
+
+## Positions
+
+Page number, in-page ratio, and zoom are saved per document. Switch panels or restart and the next visit lands where you left off. Positions go to the Host in `positions.json` and to the browser's localStorage; the Host copy survives restarts and the localStorage copy keeps panel switches quick.
+
+## Reading web pages
+
+Reader mode proxies the page through the Host route `/dsh-deepread/api/page`. It drops the origin's `X-Frame-Options` and CSP, adds a `<base>` so the origin's CSS, images, and scripts still come from the origin, and injects the selection bridge at `/dsh-deepread/api/bridge.js`. The proxied document carries `Content-Security-Policy: sandbox`, so opening it on its own still can't reach the app's origin. The panel only gets what the bridge reports: selected text, links, GET form searches, and the title.
+
+Original mode loads the page as it is inside a sandboxed iframe, which suits sites that need their own origin. There's no bridge in this mode, so selection-based actions are off; the panel says so and offers a way back to reader mode.
+
+Links and GET search forms go back to the panel, which proxies them again, so the iframe never wanders off to another site by itself. POST forms and Cmd/Ctrl+click open in the system browser. A page is capped at 12 MB. The address, source, mode, and page zoom are remembered on their own; PDFs and their positions are kept separately.
+
+## Files
+
+`index.js` is the Host half: upload and storage, Poppler parsing, the page image cache, document search, the `ctx.web.search` proxy, bookmark reading through `osascript` and `text/outline.jxa`, the page proxy and selection bridge, opening the system browser, and delivering a selection to `ctx.agents.get(sessionId).followup()`.
+
+`client.js` is the browser half: the `sidebar.panellist` entry, the main panel, the draggable splits, PDF images and the text layer, the outline tree, copy/search/ask, the PDF and page source switch, the page toolbar and bridge messages, collapsing the right pane (`dsh.deepread.readeronly`), and the live conversation rendered through the `conversation.content` Factory. The terminal uses the bundled terminal package's `TerminalBody` and xterm. Frame subscriptions sit inside the terminal content component so the outer layer doesn't re-render on every frame, and PDF pages use `content-visibility: auto` to skip drawing pages that are off screen. The sidebar icon's pointerdown only calls `mainView` to keep the current session; it no longer pre-creates a terminal tab.
+
+State lives in `$DSH_HOME/deepread/`: `docs/`, `text/`, `pages/`, and `tmp/`, with book outlines cached as `text/<id>.outline.json`, the script at `text/outline.jxa`, and positions in `positions.json`.
+
+## Limits
+
+Poppler has to be installed. Without it, opening a PDF returns a 501 that says so.
+
+Encrypted PDFs aren't supported.
+
+Scanned PDFs have no text layer, so you can look at the pages but selection, copy, and find won't work.
+
+Web search uses whichever `ctx.web` provider DSH has configured. With none configured, the search card shows an error.
+
+Reader mode doesn't carry site cookies, so pages behind a login show as logged out. Script-heavy sites may degrade. Popups are off. A navigation that skips the bridge (`location.assign`, `meta refresh`) drops the selection until you reload.
+
+The terminal is a web terminal inside the panel, not iTerm2, and it has no separate window or split of its own. DeepRead doesn't open external iTerm.
+
+The terminal lives in the DeepRead panel and doesn't appear in the session's right sidebar. For a terminal there, use New terminal in the top-right of the session.
+
+While the panel is closed the terminal has no window holding it, so after its idle reclaim time (two hours by default) the process is closed. Coming back then shows "unavailable", and New terminal gives you a fresh one.
