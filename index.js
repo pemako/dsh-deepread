@@ -129,7 +129,16 @@ const toolCache = new Map()
 async function toolPath(name) {
   const cached = toolCache.get(name)
   if (cached !== undefined) return cached
-  const directories = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
+  // A desktop launch inherits a bare PATH, so look in the usual install
+  // locations first; DEEPREAD_POPPLER_DIR lets a custom install point here.
+  const override = String(process.env.DEEPREAD_POPPLER_DIR ?? '').replace(/^~(?=$|[\\/])/, () => homedir())
+  const directories = [
+    ...(override === '' ? [] : [override]),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+  ]
   for (const directory of directories) {
     const candidate = join(directory, name)
     try {
@@ -190,7 +199,7 @@ const ERROR_TEXT = {
     'too-many-redirects': 'The page redirected too many times',
     'invalid-redirect': 'The page redirected to an invalid address',
     'non-http-redirect': 'The page redirected to a non-http address',
-    'poppler-missing': 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm)',
+    'poppler-missing': 'Poppler tools are required (pdfinfo, pdftotext, pdftoppm). Install them with brew install poppler (macOS), apt install poppler-utils (Debian/Ubuntu) or scoop install poppler (Windows), or point DEEPREAD_POPPLER_DIR at the directory holding them.',
     'open-too-fast': 'Opening too quickly; wait a moment and try again',
     'no-readable-pages': 'This PDF has no readable pages',
     'encrypted-pdf': 'Password-protected PDFs are not supported',
@@ -232,7 +241,7 @@ const ERROR_TEXT = {
     'too-many-redirects': '页面重定向次数过多',
     'invalid-redirect': '页面重定向到了无效地址',
     'non-http-redirect': '页面重定向到了非 http 地址',
-    'poppler-missing': '需要安装 Poppler（pdfinfo、pdftotext、pdftoppm）',
+    'poppler-missing': '需要安装 Poppler（pdfinfo、pdftotext、pdftoppm）：macOS 用 brew install poppler，Debian/Ubuntu 用 apt install poppler-utils，Windows 用 scoop install poppler；也可以把 DEEPREAD_POPPLER_DIR 指向它们所在的目录。',
     'open-too-fast': '打开太频繁，稍等一下再试',
     'no-readable-pages': '这份 PDF 没有可读页面',
     'encrypted-pdf': '不支持加密或需要密码的 PDF',
@@ -1630,17 +1639,20 @@ export function apply(ctx) {
         paths(id).pdf,
       ], { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 })
     } catch (error) {
-      if (error?.code === 'ENOENT') return { outline: [], error: 'PDF outlines require macOS PDFKit' }
+      if (error?.code === 'ENOENT') return { outline: [], code: 'outline-macos-only' }
       throw error
     }
     let parsed = null
     try {
       parsed = JSON.parse(result.stdout.trim())
     } catch {
-      return { outline: [], error: 'the outline reader returned invalid output' }
+      return { outline: [], code: 'outline-invalid' }
     }
-    if (!Array.isArray(parsed?.outline)) {
-      return { outline: [], error: typeof parsed?.error === 'string' ? parsed.error : 'no outline' }
+    if (!Array.isArray(parsed?.outline)) return { outline: [], code: 'outline-invalid' }
+    // The script reports a page it cannot open as an empty outline plus an
+    // error string; keep that apart from a document that simply has no outline.
+    if (typeof parsed?.error === 'string' && parsed.error !== '') {
+      return { outline: [], code: 'outline-failed' }
     }
     const outline = []
     for (const raw of parsed.outline) {
@@ -1652,7 +1664,7 @@ export function apply(ctx) {
       outline.push({ title, page, depth })
       if (outline.length >= 5000) break
     }
-    return { outline, error: undefined }
+    return { outline, code: undefined }
   }
 
   async function loadOutline(id) {

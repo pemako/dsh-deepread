@@ -12,6 +12,12 @@ Plugins → Add plugin 里填：
 
 想固定版本就在名字后面加 `@版本号`。装好以后侧栏会多一个「深读」。PDF 是本机 Poppler（`pdfinfo`、`pdftotext`、`pdftoppm`）解析的，用之前先把它装好。
 
+## 依赖
+
+读 PDF 需要本机装有 Poppler 的 `pdfinfo`、`pdftotext`、`pdftoppm`：macOS 用 `brew install poppler`，Debian/Ubuntu 用 `apt install poppler-utils`，Windows 用 `scoop install poppler`。桌面端启动时可能看不到 Homebrew 的安装路径，所以插件会先查常见目录、再退回 `PATH`；也可以用 `DEEPREAD_POPPLER_DIR` 指定目录。Poppler 是系统程序而不是 npm 包，没法作为依赖自动装上。
+
+书签目录走系统的 PDFKit（通过 `osascript`），这一项只在 macOS 上可用；其它平台面板里会说明，其余功能照常。
+
 ## 上手
 
 点侧栏的「深读」（在 Plugins、Schedules 后面）。读 PDF 就点「选择 PDF」选一个本地文件，文件会传到 Host，由 Poppler 转成页面图片和带坐标的文字层。读网页直接在地址栏敲地址，裸域名按 https，`localhost:3000` 这种按 http；旁边的前进、后退、刷新和「用系统浏览器打开」都作用在当前这一页上。

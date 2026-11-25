@@ -128,6 +128,13 @@ test('a selection is sent in the reader\'s language', async () => {
   assert.match(english, /Explain this passage/)
 })
 
+test('outline failures come back as codes, not English sentences', async () => {
+  const value = await (await fetch(api(`/outline/${docId}`))).json()
+  assert.ok(Array.isArray(value.outline))
+  assert.equal(value.error, undefined)
+  if (value.outline.length === 0) assert.match(String(value.code), /^outline-/)
+})
+
 test('the page proxy refuses an internal target before fetching', async () => {
   const response = await fetch(api(`/page?url=${encodeURIComponent('http://169.254.169.254/')}`))
   assert.equal(response.status, 400)

@@ -128,6 +128,9 @@ window.__ModuleLoader__.load({
       'toc.noMatch': 'No matching chapters.',
       'toc.loading': 'Reading contents…',
       'toc.error': 'Could not read contents: {message}',
+      'toc.outlineMacos': 'Bookmark outlines come from macOS PDFKit, which is not available here.',
+      'toc.outlineInvalid': 'The outline reader returned something unreadable.',
+      'toc.outlineFailed': 'Could not read this document\'s bookmarks.',
       'toc.filter': 'Filter chapters',
       'toc.count': '{count} entries',
       'toc.expand': 'Expand all',
@@ -264,6 +267,9 @@ window.__ModuleLoader__.load({
       'toc.noMatch': '没有匹配的章节。',
       'toc.loading': '正在读取目录…',
       'toc.error': '无法读取目录：{message}',
+      'toc.outlineMacos': '书签目录要用 macOS 的 PDFKit，这个平台上没有。',
+      'toc.outlineInvalid': '目录读取返回了无法解析的内容。',
+      'toc.outlineFailed': '读不出这份文档的书签。',
       'toc.filter': '筛选章节',
       'toc.count': '{count} 条',
       'toc.expand': '全部展开',
@@ -942,6 +948,13 @@ window.__ModuleLoader__.load({
     // Page renderer: image under an absolutely positioned text layer. The
     // word boxes come from Poppler, so selection and copy are native.
     // ---------------------------------------------------------------------
+    /** Host outline failures arrive as codes so the copy follows the interface. */
+    const OUTLINE_ERROR_KEY = {
+      'outline-macos-only': 'toc.outlineMacos',
+      'outline-invalid': 'toc.outlineInvalid',
+      'outline-failed': 'toc.outlineFailed',
+    }
+
     const EMPTY_MARKS = Object.freeze([])
 
     const PageView = React.memo(function PageView({ docId, pageNumber, page, highlight, imageDpi, marks }) {
@@ -2078,12 +2091,12 @@ window.__ModuleLoader__.load({
           .then((value) => {
             if (cancelled) return
             const rows = Array.isArray(value?.outline) ? value.outline : []
-            setOutline({ state: 'ready', rows, error: typeof value?.error === 'string' ? value.error : '' })
+            setOutline({ state: 'ready', rows, error: typeof value?.code === 'string' ? value.code : '' })
             const tree = buildOutlineTree(rows)
             setExpanded(collectOutlineIds(tree, (node) => node.children.length > 0 && node.depth < 1))
           })
           .catch((error) => {
-            if (!cancelled) setOutline({ state: 'error', rows: [], error: error instanceof Error ? error.message : String(error) })
+            if (!cancelled) setOutline({ state: 'error', rows: [], error: 'outline-failed' })
           })
         return () => { cancelled = true }
         // The outline belongs to the document id; object identity changes on reload.
@@ -3677,7 +3690,7 @@ window.__ModuleLoader__.load({
                   : outline.state === 'error'
                     ? h('div', { className: 'dr-toc-note' }, tx('toc.error', { message: outline.error }))
                     : outline.rows.length === 0
-                      ? h('div', { className: 'dr-toc-note' }, outline.error !== '' ? tx('toc.error', { message: outline.error }) : tx('toc.empty'))
+                      ? h('div', { className: 'dr-toc-note' }, outline.error !== '' ? tx(OUTLINE_ERROR_KEY[outline.error] ?? 'toc.outlineFailed') : tx('toc.empty'))
                       : tocTree.length === 0
                         ? h('div', { className: 'dr-toc-note' }, tx('toc.noMatch'))
                         : tocTree.map((node) => h(OutlineNode, {

@@ -12,6 +12,12 @@ Open Plugins → Add plugin and enter:
 
 Add `@<version>` if you want to stay on a fixed release. A DeepRead entry appears in the sidebar afterwards. PDFs are rendered by the local Poppler tools (`pdfinfo`, `pdftotext`, `pdftoppm`), so install those first.
 
+## Requirements
+
+Reading PDFs needs Poppler's `pdfinfo`, `pdftotext` and `pdftoppm` on the machine that runs DSH: `brew install poppler` on macOS, `apt install poppler-utils` on Debian/Ubuntu, `scoop install poppler` on Windows. A desktop launch may not see a Homebrew install, so the plugin looks in the usual locations and falls back to `PATH`; `DEEPREAD_POPPLER_DIR` points it at a custom directory. Poppler is a system program, not an npm package, so it cannot arrive as a dependency.
+
+Bookmark outlines go through the system's PDFKit via `osascript`, which is macOS-only; the pane says so elsewhere and everything else keeps working.
+
 ## Getting going
 
 Click DeepRead in the sidebar. For a PDF, choose a file from the empty state; it goes up to the Host, which turns it into page images plus a text layer with coordinates. For a web page, type the address: a bare domain gets https, something like `localhost:3000` gets http. Back, forward, reload, and open-in-system-browser act on whatever page is loaded.
